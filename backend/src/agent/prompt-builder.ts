@@ -72,7 +72,7 @@ export function buildSystemAppend({ branchName, baseBranch, globalRules, project
 
 export function buildFirstRunPrompt(ticket: PromptTicket): string {
   return [
-    `Ticket #${ticket.number} [${ticket.priority}]: ${ticket.title}`,
+    `Ticket #${ticket.number} [${ticket.priority}]${ticket.title.trim() ? `: ${ticket.title.trim()}` : ''}`,
     ...(ticket.projectName ? [`Project: ${ticket.projectName}`] : []),
     '',
     '## Description',

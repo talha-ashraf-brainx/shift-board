@@ -174,7 +174,7 @@ export class TicketsService {
       const repo = m.getRepository(TicketEntity);
       const draft = repo.create({
         projectId: project.id,
-        title: input.title,
+        title: input.title ?? '',
         description: input.description,
         rules: input.rules ?? [],
         ...(priority ? { priority } : {}),

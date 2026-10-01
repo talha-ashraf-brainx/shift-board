@@ -6,6 +6,7 @@ export interface TicketDto {
   number: number;
   /** null only for legacy tickets created before projects existed and never assigned. */
   projectId: string | null;
+  /** Empty string when the ticket is untitled; display it with `ticketTitle`. */
   title: string;
   description: string;
   /** Ticket-specific rules, one entry each; empty when only global and project rules apply. */
@@ -83,7 +84,8 @@ export interface TicketWithEventsDto extends TicketDto {
 
 export interface CreateTicketInput {
   projectId: string;
-  title: string;
+  /** Optional; omitted or blank means untitled. */
+  title?: string;
   description: string;
   rules?: string[];
   priority?: TicketPriority;

@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { existsSync, realpathSync } from 'node:fs';
 import { mkdir, rm } from 'node:fs/promises';
 import { basename, dirname, join, relative, resolve, isAbsolute } from 'node:path';
-import type { DiffDto, DiffFileDto } from '@agent-board/shared';
+import { ticketSubject, type DiffDto, type DiffFileDto } from '@agent-board/shared';
 import {
   BaseRepoNotReadyError,
   GitError,
@@ -178,7 +178,7 @@ export class GitService implements GitOperations {
       throw new BaseRepoNotReadyError(`Branch '${branchName}' does not exist in the target repo`);
     }
 
-    const message = `Merge ticket #${ticket.number}: ${ticket.title}`;
+    const message = `Merge ticket ${ticketSubject(ticket)}`;
     const identity = await this.identityArgs(this.repo);
     const res = await this.tryRun(
       [...identity, 'merge', '--no-ff', '--no-edit', '-m', message, branchName],

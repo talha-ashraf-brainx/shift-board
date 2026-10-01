@@ -8,7 +8,7 @@ import {
   type RetryInput,
   type UpdateTicketInput,
 } from '@agent-board/shared';
-import { ArrayMaxSize, IsArray, IsBoolean, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Length, MaxLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { Trim, TrimToNull } from '../../common/transformers';
 
@@ -33,10 +33,11 @@ export class CreateTicketDto implements CreateTicketInput {
   @IsUUID('all', { message: 'projectId must be a UUID' })
   projectId!: string;
 
+  @IsOptional()
   @Trim()
   @IsString()
-  @Length(1, 200, { message: 'title must be between 1 and 200 characters' })
-  title!: string;
+  @MaxLength(200, { message: 'title must be at most 200 characters' })
+  title?: string;
 
   @Trim()
   @IsString()
@@ -61,7 +62,7 @@ export class UpdateTicketDto implements UpdateTicketInput {
   @IsOptional()
   @Trim()
   @IsString()
-  @Length(1, 200, { message: 'title must be between 1 and 200 characters' })
+  @MaxLength(200, { message: 'title must be at most 200 characters' })
   title?: string;
 
   @IsOptional()

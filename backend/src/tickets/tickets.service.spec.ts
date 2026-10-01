@@ -134,6 +134,14 @@ describe('TicketsService (Postgres)', () => {
       await force(t.id, TicketStatus.InProgress);
       await expect(svc.update(t.id, { title: 'z' })).rejects.toBeInstanceOf(ConflictException);
     });
+
+    it('title is optional on create and can be cleared on update', async () => {
+      const t = await svc.create({ projectId, description: 'untitled' });
+      expect(t.title).toBe('');
+      const named = await svc.update(t.id, { title: 'Named' });
+      expect(named.title).toBe('Named');
+      expect((await svc.update(t.id, { title: '' })).title).toBe('');
+    });
   });
 
   describe('claimNext', () => {

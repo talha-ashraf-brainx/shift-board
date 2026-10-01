@@ -1,6 +1,6 @@
 import { clsx } from 'clsx';
 import type { HTMLAttributes, Ref } from 'react';
-import { TicketStatus, type TicketDto } from '@agent-board/shared';
+import { TicketStatus, ticketTitle, type TicketDto } from '@agent-board/shared';
 import { formatCost, needsHuman } from '../lib/meta';
 import { useProjectTag } from '../lib/projectTags';
 import { absoluteTime, relativeTime } from '../lib/time';
@@ -61,7 +61,7 @@ export function TicketCard({ ticket, dragging = false, overlay = false, index = 
         </span>
         <PriorityBadge priority={ticket.priority} />
       </div>
-      <p className="mt-1.5 line-clamp-2 leading-snug font-medium break-words text-ink">{ticket.title}</p>
+      <p className="mt-1.5 line-clamp-2 leading-snug font-medium break-words text-ink">{ticketTitle(ticket)}</p>
       <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[12px] text-muted">
         <time dateTime={ticket.updatedAt} title={`Updated ${absoluteTime(ticket.updatedAt)}`}>
           {relativeTime(ticket.updatedAt)}
