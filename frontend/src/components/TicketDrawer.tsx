@@ -14,7 +14,7 @@ import { useTicket, useUpdateTicket } from '../api/queries';
 import { useLayer } from '../hooks/useLayer';
 import { useBoardNav, useProject } from '../hooks/useProjectSelection';
 import { useTick } from '../hooks/useTick';
-import { formatCost, PRIORITY_LABEL, shortId } from '../lib/meta';
+import { formatCost, PRIORITY_LABEL } from '../lib/meta';
 import { absoluteTime, relativeTime } from '../lib/time';
 import { TicketDialogHost, type TicketDialog } from './ActionDialogs';
 import { ActivityTimeline } from './ActivityTimeline';
@@ -27,7 +27,7 @@ import { ReviewPanel, TicketDiff } from './ReviewPanel';
 import { Skeleton } from './Skeleton';
 import { TicketFormModal } from './TicketFormModal';
 
-type Tab = 'details' | 'activity' | 'diff';
+type Tab = 'activity' | 'diff';
 
 const EDITABLE: readonly TicketStatus[] = [
   TicketStatus.Pending,
@@ -48,7 +48,7 @@ function MetaItem({ label, children, title }: { label: string; children: ReactNo
   );
 }
 
-function DetailsTab({ ticket }: { ticket: TicketWithEventsDto }) {
+function TicketDetails({ ticket }: { ticket: TicketWithEventsDto }) {
   return (
     <div className="flex flex-col gap-5">
       <section aria-label="Description">
@@ -99,18 +99,18 @@ function DrawerContent({ ticket, onClose }: { ticket: TicketWithEventsDto; onClo
   const updatePriority = useUpdateTicket({ successMessage: 'Priority updated' });
   const project = useProject(ticket.projectId);
   const projectName = project?.name ?? (ticket.projectId ? 'Unknown project' : 'No project');
+  const worktree = project?.worktrees.find((w) => w.id === ticket.worktreeId);
 
   const status = ticket.status;
   const inProgress = status === TicketStatus.InProgress;
   const diffEnabled = status === TicketStatus.Review || status === TicketStatus.Done;
-  const defaultTab: Tab = diffEnabled ? 'diff' : 'details';
+  const defaultTab: Tab = diffEnabled ? 'diff' : 'activity';
   const activeTab: Tab = tab === null || (tab === 'diff' && !diffEnabled) ? defaultTab : tab;
   const canCancel = HUMAN_ALLOWED_TRANSITIONS[status].includes(TicketStatus.Cancelled);
   const showStartFresh = status !== TicketStatus.Done && status !== TicketStatus.Cancelled;
   const priorityLocked = inProgress || status === TicketStatus.Done || status === TicketStatus.Cancelled;
 
   const tabs: { key: Tab; label: string; disabled: boolean; hint?: string }[] = [
-    { key: 'details', label: 'Details', disabled: false },
     { key: 'activity', label: `Activity`, disabled: false },
     { key: 'diff', label: 'Diff', disabled: !diffEnabled, hint: 'Available once the ticket is in review' },
   ];
@@ -217,13 +217,15 @@ function DrawerContent({ ticket, onClose }: { ticket: TicketWithEventsDto; onClo
           <MetaItem label="Base branch">
             {project ? <code className="font-mono text-[12px]">{project.baseBranch}</code> : <span className="text-muted">Unknown</span>}
           </MetaItem>
-          <MetaItem label="Attempts">{ticket.attemptCount}</MetaItem>
+          <MetaItem label="Attempts" title={ticket.sessionId ? `Agent session ${ticket.sessionId}` : undefined}>
+            {ticket.attemptCount}
+          </MetaItem>
           <MetaItem label="Cost">{formatCost(ticket.totalCostUsd)}</MetaItem>
           <MetaItem label="Branch" title={ticket.branchName ?? undefined}>
             {ticket.branchName ? <code className="font-mono text-[12px]">{ticket.branchName}</code> : <span className="text-muted">None yet</span>}
           </MetaItem>
-          <MetaItem label="Session" title={ticket.sessionId ?? undefined}>
-            {ticket.sessionId ? <code className="font-mono text-[12px]">{shortId(ticket.sessionId)}</code> : <span className="text-muted">None</span>}
+          <MetaItem label="Worktree" title={worktree?.path ?? ticket.worktreePath ?? undefined}>
+            {worktree ? worktree.name : ticket.worktreePath ? 'Own worktree' : <span className="text-muted">Assigned when picked up</span>}
           </MetaItem>
           <MetaItem label="Created" title={absoluteTime(ticket.createdAt)}>
             {relativeTime(ticket.createdAt)}
@@ -277,8 +279,15 @@ function DrawerContent({ ticket, onClose }: { ticket: TicketWithEventsDto; onClo
             ))}
           </div>
           <div id={`tabpanel-${activeTab}`} role="tabpanel" aria-labelledby={`tab-${activeTab}`} key={activeTab} className="animate-rise-in pt-5">
-            {activeTab === 'details' ? <DetailsTab ticket={ticket} /> : null}
-            {activeTab === 'activity' ? <ActivityTimeline events={ticket.events} /> : null}
+            {activeTab === 'activity' ? (
+              <div className="flex flex-col gap-6">
+                <TicketDetails ticket={ticket} />
+                <section aria-label="Timeline">
+                  <h3 className="mb-2 text-[12px] font-medium text-muted">Timeline</h3>
+                  <ActivityTimeline events={ticket.events} />
+                </section>
+              </div>
+            ) : null}
             {activeTab === 'diff' && diffEnabled ? <TicketDiff ticketId={ticket.id} /> : null}
           </div>
         </div>

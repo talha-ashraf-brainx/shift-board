@@ -1,5 +1,6 @@
 import type {
   AgentStatusDto,
+  AttachmentDto,
   AnswerInput,
   BrowseDto,
   CreateProjectInput,
@@ -49,8 +50,12 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   try {
     res = await fetch(`/api${path}`, {
       method,
-      headers: body === undefined ? { Accept: 'application/json' } : { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      // FormData sets its own multipart Content-Type (with the boundary).
+      headers:
+        body === undefined || body instanceof FormData
+          ? { Accept: 'application/json' }
+          : { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body),
     });
   } catch {
     throw new ApiError(0, 'Cannot reach the API server. Is the backend running?');
@@ -109,6 +114,20 @@ export const api = {
   createProject: (input: CreateProjectInput) => request<ProjectDto>('POST', '/projects', input),
   updateProject: (id: string, input: UpdateProjectInput) => request<ProjectDto>('PATCH', `/projects/${enc(id)}`, input),
   deleteProject: (id: string) => request<{ id: string }>('DELETE', `/projects/${enc(id)}`),
+  addWorktree: (projectId: string, name: string) =>
+    request<ProjectDto>('POST', `/projects/${enc(projectId)}/worktrees`, { name }),
+  activateWorktree: (projectId: string, worktreeId: string) =>
+    request<ProjectDto>('POST', `/projects/${enc(projectId)}/worktrees/${enc(worktreeId)}/activate`),
+  removeWorktree: (projectId: string, worktreeId: string) =>
+    request<ProjectDto>('DELETE', `/projects/${enc(projectId)}/worktrees/${enc(worktreeId)}`),
+
+  /** Uploads one image (PNG, JPEG, GIF or WebP, at most 10 MB); reference it as `![filename](url)`. */
+  uploadAttachment: (file: File, ticketId?: string) => {
+    const form = new FormData();
+    form.append('file', file, file.name);
+    if (ticketId) form.append('ticketId', ticketId);
+    return request<AttachmentDto>('POST', '/attachments', form);
+  },
 
   browse: (path: string | null, showHidden: boolean) => {
     const params = new URLSearchParams();

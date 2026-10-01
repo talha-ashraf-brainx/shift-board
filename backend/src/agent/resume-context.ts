@@ -1,4 +1,12 @@
-import { TicketEventType, TicketStatus, TransitionActor } from '@agent-board/shared';
+import {
+  TicketEventType,
+  TicketStatus,
+  TransitionActor,
+  answerText,
+  normalizeAnswers,
+  normalizeQuestions,
+  type QuestionAnswer,
+} from '@agent-board/shared';
 import {
   buildAnswerResumePrompt,
   buildFirstRunPrompt,
@@ -64,7 +72,8 @@ export function determineResumePrompt(ticket: ResumeTicket, events: ResumeEvent[
     const from = metaString(requeue, 'from');
 
     if (from === TicketStatus.NeedsContext) {
-      return { mode: 'answer', prompt: buildAnswerResumePrompt(collectQaPairs(events, requeueIdx)) };
+      const { pairs, note } = collectQaPairs(events, requeueIdx);
+      return { mode: 'answer', prompt: buildAnswerResumePrompt(pairs, note) };
     }
 
     if (from === TicketStatus.Review) {
@@ -93,22 +102,44 @@ export function determineResumePrompt(ticket: ResumeTicket, events: ResumeEvent[
 
 /**
  * Pairs the latest agent_question's questions with the human_answer events after it.
- * The answers are joined into one reply that covers every question (a human answers
- * the whole list in one message).
+ *
+ * When the latest answer is structured (meta.answers, one answer per question), each
+ * question gets its own answer, matched by question text and then by position; its extra
+ * note, and any free-text answers, become the note. Otherwise (older free-text answers)
+ * the answers are joined into one reply that covers every question.
  */
-function collectQaPairs(events: ResumeEvent[], requeueIdx: number): QaPair[] {
+function collectQaPairs(events: ResumeEvent[], requeueIdx: number): { pairs: QaPair[]; note?: string } {
   const qIdx = lastIndex(events, (e) => e.type === TicketEventType.AgentQuestion, requeueIdx + 1);
-  const answers = events
+  const answerEvents = events
     // retry() also stores its note as a human_answer (meta.kind 'retry_note'); those are not answers.
-    .filter((e, i) => i > qIdx && e.type === TicketEventType.HumanAnswer && e.meta?.kind !== 'retry_note')
-    .map((e) => e.body.trim())
-    .filter((b) => b.length > 0);
-  const answer = answers.length > 0 ? answers.join('\n\n') : '(no answer text recorded)';
+    .filter((e, i) => i > qIdx && i < requeueIdx && e.type === TicketEventType.HumanAnswer && e.meta?.kind !== 'retry_note');
+  const questions = normalizeQuestions(qIdx >= 0 ? events[qIdx]!.meta?.questions : undefined).map((q) => q.question);
 
-  const rawQuestions = qIdx >= 0 ? events[qIdx]!.meta?.questions : undefined;
-  const questions = Array.isArray(rawQuestions)
-    ? rawQuestions.filter((q): q is string => typeof q === 'string' && q.trim().length > 0)
-    : [];
-  if (questions.length === 0) return [{ question: '', answer }];
-  return questions.map((question) => ({ question, answer }));
+  const structuredIdx = lastIndex(answerEvents, (e) => normalizeAnswers(e.meta?.answers).length > 0);
+  if (structuredIdx >= 0) {
+    const structured = answerEvents[structuredIdx]!;
+    const answers = normalizeAnswers(structured.meta?.answers);
+    const notes = [
+      ...answerEvents.filter((_, i) => i !== structuredIdx).map((e) => e.body.trim()),
+      typeof structured.meta?.note === 'string' ? structured.meta.note.trim() : '',
+    ].filter((b) => b.length > 0);
+    const asked = questions.length > 0 ? questions : answers.map((a) => a.question);
+    const pairs = asked.map((question, i) => ({
+      question,
+      answer: answerText(matchAnswer(answers, question, i) ?? { selected: [], other: null }) || '(no answer)',
+      own: true,
+    }));
+    return { pairs, note: notes.length > 0 ? notes.join('\n\n') : undefined };
+  }
+
+  const bodies = answerEvents.map((e) => e.body.trim()).filter((b) => b.length > 0);
+  const answer = bodies.length > 0 ? bodies.join('\n\n') : '(no answer text recorded)';
+  if (questions.length === 0) return { pairs: [{ question: '', answer }] };
+  return { pairs: questions.map((question) => ({ question, answer })) };
+}
+
+/** The answer whose question text matches, else the one at the same position. */
+function matchAnswer(answers: QuestionAnswer[], question: string, index: number): QuestionAnswer | undefined {
+  const key = question.trim().toLowerCase();
+  return answers.find((a) => a.question.trim().toLowerCase() === key) ?? answers[index];
 }

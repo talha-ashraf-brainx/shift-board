@@ -129,14 +129,6 @@
       background-position: -100% 0;
     }
   }
-  @keyframes sweep {
-    from {
-      background-position: 200% 0;
-    }
-    to {
-      background-position: -200% 0;
-    }
-  }
 }
 
 /* Night shift. Tailwind's tinted scales are flipped (50 becomes a dark tint, 800 a light one),
@@ -425,30 +417,5 @@
     );
     background-size: 200% 100%;
     animation: var(--animate-shimmer);
-  }
-
-  /*
-   * The card the agent is working on: a violet signal runs along its top edge
-   * for as long as the run lasts. This is the board's one ambient animation.
-   */
-  .working-edge {
-    position: relative;
-    overflow: hidden;
-  }
-  .working-edge::before {
-    content: "";
-    position: absolute;
-    inset: 0 0 auto;
-    height: 2px;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      color-mix(in oklab, var(--color-accent) 30%, transparent) 30%,
-      var(--color-accent) 50%,
-      color-mix(in oklab, var(--color-accent) 30%, transparent) 70%,
-      transparent 100%
-    );
-    background-size: 200% 100%;
-    animation: sweep 2.4s linear infinite;
   }
 }

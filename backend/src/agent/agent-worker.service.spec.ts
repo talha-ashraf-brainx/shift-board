@@ -25,6 +25,7 @@ function makeTicket(overrides: Partial<TicketEntity> = {}): TicketEntity {
     sessionId: null,
     branchName: null,
     worktreePath: null,
+    worktreeId: 'w1',
     agentSummary: null,
     attemptCount: 1,
     lastError: null,
@@ -37,8 +38,12 @@ function makeTicket(overrides: Partial<TicketEntity> = {}): TicketEntity {
   } as TicketEntity;
 }
 
-function setup(scripts: RunScript[], gitState: { uncommitted?: boolean; commits?: boolean } = {}) {
-  let ticket = makeTicket();
+function setup(
+  scripts: RunScript[],
+  gitState: { uncommitted?: boolean; commits?: boolean } = {},
+  ticketOverrides: Partial<TicketEntity> = {},
+) {
+  let ticket = makeTicket(ticketOverrides);
   const tickets = {
     patchInternal: jest.fn(async (_id: string, patch: Partial<TicketEntity>) => {
       ticket = { ...ticket, ...patch } as TicketEntity;
@@ -74,7 +79,9 @@ function setup(scripts: RunScript[], gitState: { uncommitted?: boolean; commits?
   };
   let committed = false;
   const git = {
-    createWorktree: jest.fn(async () => ({ branchName: 'agent/ticket-5', worktreePath: '/wt/ticket-5' })),
+    createWorktree: jest.fn(async () => ({ branchName: 'agent/ticket-5', worktreePath: '/wt/legacy/ticket-5' })),
+    ensureSharedWorktree: jest.fn(async () => undefined),
+    checkoutTicketBranch: jest.fn(async (path: string) => ({ branchName: 'agent/ticket-5', worktreePath: path })),
     hasUncommittedChanges: jest.fn(async () => !!gitState.uncommitted && !committed),
     commitAll: jest.fn(async () => {
       committed = true;
@@ -96,6 +103,7 @@ function setup(scripts: RunScript[], gitState: { uncommitted?: boolean; commits?
   };
   const config = { pollIntervalMs: 10 } as AppConfig;
   const gitFactory = { forProject: jest.fn(() => git) };
+  const worktrees = { findById: jest.fn(async () => ({ id: 'w1', path: '/wt/ticket-5' })) };
   const worker = new AgentWorkerService(
     config,
     tickets as never,
@@ -108,8 +116,9 @@ function setup(scripts: RunScript[], gitState: { uncommitted?: boolean; commits?
     registry,
     signal,
     runner as unknown as AgentRunner,
+    worktrees as never,
   );
-  return { worker, tickets, stateMachine, events, settings, git, projects, status, registry, runner, calls, getTicket: () => ticket };
+  return { worker, worktrees, tickets, stateMachine, events, settings, git, projects, status, registry, runner, calls, getTicket: () => ticket };
 }
 
 /** Makes the next registered run report "cancel requested" (as RunRegistry.abort() does), without its 30s timer. */
@@ -161,6 +170,33 @@ describe('AgentWorkerService.processTicket outcome resolution', () => {
     // registry released, status broadcast on start and end
     expect(s.registry.size()).toBe(0);
     expect(s.status.broadcast).toHaveBeenCalledTimes(2);
+  });
+
+  it('runs in the assigned shared worktree on the ticket branch', async () => {
+    const s = setup([run(submit)], { commits: true });
+    await s.worker.processTicket(s.getTicket());
+    expect(s.worktrees.findById).toHaveBeenCalledWith('w1');
+    expect(s.git.ensureSharedWorktree).toHaveBeenCalledWith('/wt/ticket-5');
+    expect(s.git.checkoutTicketBranch).toHaveBeenCalledWith('/wt/ticket-5', expect.objectContaining({ number: 5 }));
+    expect(s.git.createWorktree).not.toHaveBeenCalled();
+  });
+
+  it('a legacy ticket keeps its own per-ticket worktree', async () => {
+    const s = setup([run(submit)], { commits: true }, { worktreeId: null, worktreePath: '/wt/legacy/ticket-5' });
+    await s.worker.processTicket(s.getTicket());
+    expect(s.git.createWorktree).toHaveBeenCalled();
+    expect(s.git.checkoutTicketBranch).not.toHaveBeenCalled();
+    expect(s.calls[0]!.ticket).toMatchObject({ worktreePath: '/wt/legacy/ticket-5' });
+  });
+
+  it('a ticket with no worktree (project has no active one) fails with a clear error', async () => {
+    const s = setup([], {}, { worktreeId: null });
+    await s.worker.processTicket(s.getTicket());
+    expect(s.stateMachine.transition).toHaveBeenCalledWith(
+      't1',
+      TicketStatus.Failed,
+      expect.objectContaining({ reason: expect.stringContaining('no active worktree') }),
+    );
   });
 
   it('submit_fix with uncommitted changes → commitAll then review', async () => {

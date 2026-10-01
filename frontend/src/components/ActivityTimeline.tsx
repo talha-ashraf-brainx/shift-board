@@ -2,9 +2,13 @@ import { clsx } from 'clsx';
 import {
   EventAuthor,
   TicketEventType,
+  answerText,
+  normalizeAnswers,
+  normalizeQuestions,
   type AgentLogMeta,
   type AgentQuestionMeta,
   type AgentSummaryMeta,
+  type HumanAnswerMeta,
   type StatusChangedMeta,
   type TicketEventDto,
   type TicketStatus,
@@ -90,20 +94,64 @@ function EventBody({ event }: { event: TicketEventDto }) {
     }
     case TicketEventType.AgentQuestion: {
       const m = meta<AgentQuestionMeta>(event);
-      const questions = Array.isArray(m.questions) ? m.questions : [];
+      const questions = normalizeQuestions(m.questions);
       return (
         <div className="text-meta">
           {m.reason ? <p className="text-muted">{m.reason}</p> : null}
           {questions.length > 0 ? (
-            <ol className="mt-1 list-decimal space-y-0.5 pl-5">
+            <ol className="mt-1 list-decimal space-y-1 pl-5">
               {questions.map((q, i) => (
                 // oxlint-disable-next-line react/no-array-index-key -- questions are static text without ids
-                <li key={i}>{q}</li>
+                <li key={i}>
+                  {q.header ? (
+                    <span className="mr-1 inline-block rounded-full bg-amber-50 px-1.5 text-[11px] font-medium text-amber-800">
+                      {q.header}
+                    </span>
+                  ) : null}
+                  {q.question}
+                  {q.multiSelect ? <span className="text-muted"> (pick any)</span> : null}
+                  {q.options.length > 0 ? (
+                    <ul className="mt-0.5 space-y-px text-[12px]">
+                      {q.options.map((o) => (
+                        <li key={o.label} className="flex gap-1.5">
+                          <span className="text-stone-400" aria-hidden="true">
+                            {q.multiSelect ? '☐' : '○'}
+                          </span>
+                          <span>
+                            {o.label}
+                            {o.description ? <span className="text-muted"> · {o.description}</span> : null}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </li>
               ))}
             </ol>
           ) : (
             <Markdown>{event.body}</Markdown>
           )}
+        </div>
+      );
+    }
+    case TicketEventType.HumanAnswer: {
+      const m = meta<HumanAnswerMeta>(event);
+      const answers = normalizeAnswers(m.answers);
+      if (answers.length === 0) return event.body ? <Markdown>{event.body}</Markdown> : null;
+      return (
+        <div className="text-meta">
+          <dl className="space-y-1">
+            {answers.map((a, i) => (
+              // oxlint-disable-next-line react/no-array-index-key -- answers are positional
+              <div key={i}>
+                <dt className="text-[12px] text-muted">{a.question || `Question ${i + 1}`}</dt>
+                <dd className="break-words">{answerText(a) || <span className="text-muted">No answer</span>}</dd>
+              </div>
+            ))}
+          </dl>
+          {typeof m.note === 'string' && m.note.trim() ? (
+            <Markdown className="mt-1 rounded-control bg-page px-2 py-1">{m.note}</Markdown>
+          ) : null}
         </div>
       );
     }

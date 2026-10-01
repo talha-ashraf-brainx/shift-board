@@ -5,6 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import type { Repository } from 'typeorm';
 import { RunRegistry } from '../common/run-registry.service';
 import { PROJECTS_READINESS_CHANGED, ProjectsService } from '../projects/projects.service';
+import { WorktreesService } from '../projects/worktrees.service';
 import { SETTINGS_CHANGED, SettingsService } from '../settings/settings.service';
 import { TicketEntity } from '../tickets/ticket.entity';
 
@@ -23,13 +24,15 @@ export class AgentStatusService implements OnModuleDestroy {
     private readonly settings: SettingsService,
     private readonly projects: ProjectsService,
     private readonly runs: RunRegistry,
+    private readonly worktrees: WorktreesService,
     private readonly emitter: EventEmitter2,
   ) {}
 
   async getStatus(): Promise<AgentStatusDto> {
-    const [settings, queueLength] = await Promise.all([
+    const [settings, queueLength, waiting] = await Promise.all([
       this.settings.get(),
       this.tickets.countBy({ status: TicketStatus.Pending }),
+      this.worktrees.waiting(),
     ]);
     const current = this.runs.current();
     const state = current ? 'running' : settings.workerEnabled ? 'idle' : 'paused';
@@ -39,6 +42,7 @@ export class AgentStatusService implements OnModuleDestroy {
       ticketNumber: current?.ticketNumber ?? null,
       queueLength,
       blockedProjects: this.projects.getBlocked(),
+      waiting,
     };
   }
 

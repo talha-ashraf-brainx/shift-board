@@ -16,6 +16,7 @@ export function ticketToDto(t: TicketEntity): TicketDto {
     sessionId: t.sessionId ?? null,
     branchName: t.branchName ?? null,
     worktreePath: t.worktreePath ?? null,
+    worktreeId: t.worktreeId ?? null,
     agentSummary: t.agentSummary ?? null,
     attemptCount: t.attemptCount,
     lastError: t.lastError ?? null,

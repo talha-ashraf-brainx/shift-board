@@ -14,11 +14,12 @@ import { EventsService } from '../events/events.service';
 import { GitServiceFactory } from '../git/git-service.factory';
 import type { GitOperations } from '../git/git.types';
 import { ProjectsService } from '../projects/projects.service';
+import { WorktreesService } from '../projects/worktrees.service';
 import { SettingsService } from '../settings/settings.service';
 import { AgentStatusService } from '../status/agent-status.service';
 import type { TicketEntity } from '../tickets/ticket.entity';
 import { TicketStateMachine } from '../tickets/ticket-state-machine';
-import { TicketsService } from '../tickets/tickets.service';
+import { isLegacyWorktree, TicketsService } from '../tickets/tickets.service';
 import { AgentRunner, type AgentRunOutcome, type RunResultInfo } from './agent-runner';
 import { AgentProcessTracker } from './process-tracker';
 import { formatSummaryBody } from './board-tools';
@@ -60,6 +61,7 @@ export class AgentWorkerService implements OnApplicationBootstrap, OnApplication
     private readonly registry: RunRegistry,
     private readonly signal: WorkerSignal,
     private readonly runner: AgentRunner,
+    private readonly worktrees: WorktreesService,
     @Optional() private readonly processes?: AgentProcessTracker,
   ) {}
 
@@ -148,7 +150,7 @@ export class AgentWorkerService implements OnApplicationBootstrap, OnApplication
     if (!ticket.projectId) throw new Error(`Ticket #${ticket.number} does not belong to a project`);
     const project = await this.projects.findById(ticket.projectId);
     const git = this.gitFactory.forProject(project);
-    const worktree = await git.createWorktree(ticket);
+    const worktree = await this.prepareWorktree(git, ticket);
     if (ticket.branchName !== worktree.branchName || ticket.worktreePath !== worktree.worktreePath) {
       ticket = await this.tickets.patchInternal(ticket.id, {
         branchName: worktree.branchName,
@@ -197,6 +199,15 @@ export class AgentWorkerService implements OnApplicationBootstrap, OnApplication
 
     if (handle.signal.aborted) return;
     await this.resolveOutcome(git, ticket, worktree.worktreePath, runState, result, !session.id);
+  }
+
+  /** The claim assigned the ticket a shared worktree (legacy tickets keep their own). */
+  private async prepareWorktree(git: GitOperations, ticket: TicketEntity) {
+    if (isLegacyWorktree(ticket)) return git.createWorktree(ticket);
+    if (!ticket.worktreeId) throw new Error(`Ticket #${ticket.number} has no worktree; the project has no active worktree`);
+    const { path } = await this.worktrees.findById(ticket.worktreeId);
+    await git.ensureSharedWorktree(path);
+    return git.checkoutTicketBranch(path, ticket);
   }
 
   private async resolveOutcome(

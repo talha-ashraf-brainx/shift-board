@@ -228,6 +228,91 @@ describe('GitService', () => {
     expect(readFileSync(join(worktreePath, 'a.txt'), 'utf8')).toBe('line 1\nline 2\nline 3\n');
   });
 
+  describe('shared worktrees', () => {
+    const head = (cwd: string) => git(cwd, 'rev-parse', '--abbrev-ref', 'HEAD').trim();
+
+    it('adds a detached worktree once and reuses it', async () => {
+      const path = join(worktreesDir, 'worktrees', 'main');
+      await svc.ensureSharedWorktree(path);
+      expect(head(path)).toBe('HEAD');
+      writeFileSync(join(path, 'scratch.txt'), 'keep');
+      await svc.ensureSharedWorktree(path);
+      expect(readFileSync(join(path, 'scratch.txt'), 'utf8')).toBe('keep');
+    });
+
+    it('runs tickets one after another on their own branches, merging each into base', async () => {
+      const path = join(worktreesDir, 'worktrees', 'main');
+      await svc.ensureSharedWorktree(path);
+
+      expect(await svc.checkoutTicketBranch(path, ticket(1))).toEqual({ branchName: 'agent/ticket-1', worktreePath: path });
+      expect(head(path)).toBe('agent/ticket-1');
+      writeFileSync(join(path, 'a.txt'), 'one\n');
+      await svc.commitAll(path, 'ticket 1');
+      await svc.merge(ticket(1));
+      await svc.releaseSharedWorktree(path, ticket(1), { deleteBranch: true });
+      expect(head(path)).toBe('HEAD');
+      expect(git(repo, 'branch', '--list', 'agent/ticket-1').trim()).toBe('');
+
+      await svc.checkoutTicketBranch(path, ticket(2));
+      // Branched from the updated base, so ticket 1's change is there.
+      expect(readFileSync(join(path, 'a.txt'), 'utf8')).toBe('one\n');
+    });
+
+    it('commits leftover work onto the branch it belongs to before switching, and resumes it later', async () => {
+      const path = join(worktreesDir, 'worktrees', 'main');
+      await svc.ensureSharedWorktree(path);
+      await svc.checkoutTicketBranch(path, ticket(3));
+      writeFileSync(join(path, 'wip.txt'), 'half done');
+
+      await svc.checkoutTicketBranch(path, ticket(4));
+      expect(existsSync(join(path, 'wip.txt'))).toBe(false);
+      expect(git(repo, 'log', '-1', '--format=%s', 'agent/ticket-3').trim()).toMatch(/^WIP: /);
+
+      await svc.checkoutTicketBranch(path, ticket(3));
+      expect(readFileSync(join(path, 'wip.txt'), 'utf8')).toBe('half done');
+    });
+
+    it('drops stray changes when the worktree is not on an agent branch', async () => {
+      const path = join(worktreesDir, 'worktrees', 'main');
+      await svc.ensureSharedWorktree(path);
+      writeFileSync(join(path, 'stray.txt'), 'x');
+      await svc.checkoutTicketBranch(path, ticket(5));
+      expect(existsSync(join(path, 'stray.txt'))).toBe(false);
+    });
+
+    it('release leaves the worktree alone when another ticket holds it', async () => {
+      const path = join(worktreesDir, 'worktrees', 'main');
+      await svc.ensureSharedWorktree(path);
+      await svc.checkoutTicketBranch(path, ticket(6));
+      await svc.commitAll(path, 'nothing');
+      await svc.checkoutTicketBranch(path, ticket(7));
+      await svc.releaseSharedWorktree(path, ticket(6), { deleteBranch: true });
+      expect(head(path)).toBe('agent/ticket-7');
+      expect(git(repo, 'branch', '--list', 'agent/ticket-6').trim()).toBe('');
+    });
+
+    it('resetTicketBranchToBase resets the checked-out branch, or moves the ref when it is not checked out', async () => {
+      const path = join(worktreesDir, 'worktrees', 'main');
+      await svc.ensureSharedWorktree(path);
+      await svc.checkoutTicketBranch(path, ticket(8));
+      writeFileSync(join(path, 'a.txt'), 'eight\n');
+      await svc.commitAll(path, 'ticket 8');
+      await svc.checkoutTicketBranch(path, ticket(9));
+
+      await svc.resetTicketBranchToBase(path, ticket(8));
+      expect(await svc.hasNewCommits(ticket(8))).toBe(false);
+      expect(head(path)).toBe('agent/ticket-9');
+    });
+
+    it('removeSharedWorktree deletes it from git and disk', async () => {
+      const path = join(worktreesDir, 'worktrees', 'extra');
+      await svc.ensureSharedWorktree(path);
+      await svc.removeSharedWorktree(path);
+      expect(existsSync(path)).toBe(false);
+      expect(git(repo, 'worktree', 'list')).not.toContain(path);
+    });
+  });
+
   it('falls back to a default identity when none is configured', async () => {
     const saved = { g: process.env.GIT_CONFIG_GLOBAL, s: process.env.GIT_CONFIG_NOSYSTEM };
     const emptyCfg = join(root, 'empty-gitconfig');

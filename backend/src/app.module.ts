@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { AgentModule } from './agent/agent.module';
+import { AttachmentsModule } from './attachments/attachments.module';
 import { CommonModule } from './common/common.module';
 import { ConfigModule } from './config/config.module';
 import { DatabaseModule } from './database/database.module';
@@ -26,6 +27,7 @@ import { TicketsModule } from './tickets/tickets.module';
     TicketsModule,
     SettingsModule,
     StatusModule,
+    AttachmentsModule,
     RealtimeModule,
     AgentModule,
   ],

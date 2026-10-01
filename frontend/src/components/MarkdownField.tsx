@@ -1,6 +1,9 @@
 import { clsx } from 'clsx';
-import { useId, useState, type KeyboardEvent } from 'react';
+import { useId, useRef, useState, type KeyboardEvent } from 'react';
+import { IMAGE_TYPES, useImageAttachments } from '../hooks/useImageAttachments';
+import { Icon } from './Icon';
 import { Markdown } from './Markdown';
+import { Spinner } from './Spinner';
 
 interface MarkdownFieldProps {
   label: string;
@@ -14,9 +17,13 @@ interface MarkdownFieldProps {
   disabled?: boolean;
   autoFocus?: boolean;
   onKeyDown?: (e: KeyboardEvent<HTMLTextAreaElement>) => void;
+  /** Image paste / drop / "Add image" (default on). */
+  images?: boolean;
+  /** Links uploaded images to this ticket. */
+  ticketId?: string;
 }
 
-/** Markdown textarea with a Write / Preview toggle. */
+/** Markdown textarea with a Write / Preview toggle. Images can be pasted, dropped or picked. */
 export function MarkdownField({
   label,
   value,
@@ -29,11 +36,16 @@ export function MarkdownField({
   disabled,
   autoFocus,
   onKeyDown,
+  images = true,
+  ticketId,
 }: MarkdownFieldProps) {
   const id = useId();
   const hintId = `${id}-hint`;
   const errorId = `${id}-error`;
   const [mode, setMode] = useState<'write' | 'preview'>('write');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const attach = useImageAttachments({ value, onChange, textareaRef, ticketId, enabled: images && !disabled });
 
   const describedBy = [hint && !error ? hintId : null, error ? errorId : null].filter(Boolean).join(' ') || undefined;
 
@@ -44,29 +56,66 @@ export function MarkdownField({
           {label}
           {required ? <span className="text-red-600"> *</span> : <span className="font-normal text-muted"> (optional)</span>}
         </label>
-        <div className="flex rounded-control border border-line bg-page p-0.5 text-[12px]">
-          {(['write', 'preview'] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              aria-pressed={mode === m}
-              onClick={() => setMode(m)}
-              className={clsx(
-                'rounded-[5px] px-2 py-0.5 font-medium capitalize transition-[background-color,color,box-shadow] duration-150',
-                mode === m ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-ink',
-              )}
-            >
-              {m}
-            </button>
-          ))}
+        <div className="flex items-center gap-2">
+          {attach.uploading > 0 ? (
+            <output className="flex items-center gap-1 text-[12px] text-muted">
+              <Spinner className="size-3" />
+              Uploading…
+            </output>
+          ) : null}
+          {images && mode === 'write' ? (
+            <>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={disabled}
+                className="flex items-center gap-1 rounded-control px-1.5 py-0.5 text-[12px] font-medium text-muted transition-colors duration-150 hover:text-ink disabled:opacity-50"
+              >
+                <Icon name="image" className="size-3.5" />
+                Add image
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={IMAGE_TYPES.join(',')}
+                multiple
+                hidden
+                onChange={(e) => {
+                  attach.uploadFiles(Array.from(e.target.files ?? []));
+                  e.target.value = '';
+                }}
+              />
+            </>
+          ) : null}
+          <div className="flex rounded-control border border-line bg-page p-0.5 text-[12px]">
+            {(['write', 'preview'] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                aria-pressed={mode === m}
+                onClick={() => setMode(m)}
+                className={clsx(
+                  'rounded-[5px] px-2 py-0.5 font-medium capitalize transition-[background-color,color,box-shadow] duration-150',
+                  mode === m ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-ink',
+                )}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
       {mode === 'write' ? (
         <textarea
+          ref={textareaRef}
           id={id}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={onKeyDown}
+          onPaste={attach.onPaste}
+          onDragOver={attach.onDragOver}
+          onDragLeave={attach.onDragLeave}
+          onDrop={attach.onDrop}
           rows={rows}
           placeholder={placeholder}
           disabled={disabled}
@@ -74,7 +123,10 @@ export function MarkdownField({
           aria-describedby={describedBy}
           aria-required={required || undefined}
           data-autofocus={autoFocus || undefined}
-          className="field resize-y font-mono text-[13px] leading-relaxed"
+          className={clsx(
+            'field resize-y font-mono text-[13px] leading-relaxed',
+            attach.dragging && 'border-accent ring-2 ring-accent/30',
+          )}
         />
       ) : (
         <section

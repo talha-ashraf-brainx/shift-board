@@ -1,4 +1,4 @@
-import { EventAuthor, TicketEventType } from '@agent-board/shared';
+import { EventAuthor, TicketEventType, type AgentQuestion } from '@agent-board/shared';
 import { z } from 'zod';
 import type { FinishingTool, RunState } from './run-state';
 import type { ClaudeSdk } from './sdk-loader';
@@ -42,12 +42,26 @@ export const submitFixShape = {
   testing: z.string().min(1).describe('What you ran to verify the fix (tests, checks) and the result.'),
 };
 
+export const questionOptionShape = z.object({
+  label: z.string().min(1).describe('The choice, in a few words.'),
+  description: z.string().optional().describe('What picking this option means, or its trade-off.'),
+});
+
+export const questionShape = z.object({
+  question: z.string().min(1).describe('One specific question, ending with a question mark.'),
+  header: z.string().max(12).optional().describe('Very short label shown as a chip, e.g. "Scope" (at most 12 characters).'),
+  options: z
+    .array(questionOptionShape)
+    .max(4)
+    .describe(
+      '0 to 4 choices. Offer 2-4 concrete options when the answer is a choice, recommended option first; ' +
+        'use [] for an open question. The owner can always type their own answer instead.',
+    ),
+  multiSelect: z.boolean().optional().describe('True when more than one option may be picked.'),
+});
+
 export const requestContextShape = {
-  questions: z
-    .array(z.string().min(1))
-    .min(1)
-    .max(5)
-    .describe('1 to 5 specific questions for the board owner.'),
+  questions: z.array(questionShape).min(1).max(5).describe('1 to 5 specific questions for the board owner.'),
   reason: z.string().min(1).describe('Why you cannot proceed without these answers.'),
 };
 
@@ -60,7 +74,7 @@ export const addNoteShape = {
 };
 
 export type SubmitFixArgs = { summary: string; testing: string };
-export type RequestContextArgs = { questions: string[]; reason: string };
+export type RequestContextArgs = { questions: AgentQuestion[]; reason: string };
 export type GiveUpArgs = { reason: string };
 export type AddNoteArgs = { message: string };
 
@@ -80,9 +94,37 @@ export function formatSummaryBody(summary: string, testing: string): string {
   return `## Summary\n${summary.trim()}\n\n## Testing\n${testing.trim()}`;
 }
 
-export function formatQuestionsBody(questions: string[], reason: string): string {
-  const list = questions.map((q, i) => `${i + 1}. ${q.trim()}`).join('\n');
+/** Markdown fallback for the agent_question event: numbered questions, each with its options. */
+export function formatQuestionsBody(questions: AgentQuestion[], reason: string): string {
+  const list = questions
+    .map((q, i) => {
+      const header = q.header?.trim() ? `**${q.header.trim()}:** ` : '';
+      const multi = q.multiSelect && q.options.length > 0 ? ' (pick any)' : '';
+      const options = q.options.map((o) => {
+        const description = o.description?.trim() ? `: ${o.description.trim()}` : '';
+        return `\n   - ${o.label.trim()}${description}`;
+      });
+      return `${i + 1}. ${header}${q.question.trim()}${multi}${options.join('')}`;
+    })
+    .join('\n');
   return `${list}\n\nReason: ${reason.trim()}`;
+}
+
+/** Trims the parsed questions and drops empty optional fields before they are stored. */
+function cleanQuestions(questions: AgentQuestion[]): AgentQuestion[] {
+  return questions.map((q) => {
+    const header = q.header?.trim();
+    const options = q.options.map((o) => {
+      const description = o.description?.trim();
+      return description ? { label: o.label.trim(), description } : { label: o.label.trim() };
+    });
+    return {
+      question: q.question.trim(),
+      ...(header ? { header } : {}),
+      options,
+      ...(q.multiSelect && options.length > 0 ? { multiSelect: true } : {}),
+    };
+  });
 }
 
 /**
@@ -127,8 +169,14 @@ export function createBoardToolHandlers({ ticketId, runState, events }: BoardToo
       const rejected = alreadyFinished();
       if (rejected) return rejected;
       const parsed = z.object(requestContextShape).safeParse(args);
-      if (!parsed.success) return fail('request_context needs 1 to 5 non-empty questions and a reason.');
-      const { questions, reason } = parsed.data;
+      if (!parsed.success) {
+        return fail(
+          'request_context needs 1 to 5 questions (each a non-empty question, a header of at most 12 characters, ' +
+            'and at most 4 options with non-empty labels) and a reason.',
+        );
+      }
+      const questions = cleanQuestions(parsed.data.questions);
+      const reason = parsed.data.reason;
       try {
         await events.append({
           ticketId,
@@ -187,7 +235,11 @@ export function buildBoardServer(sdk: Pick<ClaudeSdk, 'tool' | 'createSdkMcpServ
     ),
     sdk.tool(
       'request_context',
-      'Finish the run: ask the board owner 1-5 specific questions when the ticket is ambiguous. Do not guess.',
+      'Finish the run: ask the board owner 1-5 specific questions when the ticket is ambiguous. Do not guess. ' +
+        'The owner answers one question at a time. When the answer is a choice, offer 2-4 concrete options ' +
+        '(put the recommended option first and say so in its description); use no options for an open question. ' +
+        'The owner can always type their own answer instead of picking an option. Set multiSelect when ' +
+        'several options can apply together.',
       requestContextShape,
       (args) => h.request_context(args),
     ),

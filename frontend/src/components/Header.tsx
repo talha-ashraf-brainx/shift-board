@@ -43,9 +43,19 @@ function WorkerStatusPill() {
     );
   }
 
+  const waiting = status.waiting ?? [];
   const queue =
     status.queueLength > 0 ? (
-      <span className="border-l border-current/15 pl-2 font-normal opacity-75 tabular-nums">{status.queueLength} queued</span>
+      <span
+        className="border-l border-current/15 pl-2 font-normal opacity-75 tabular-nums"
+        title={
+          waiting.length > 0
+            ? waiting.map((w) => `#${w.ticketNumber} waits for ${w.worktreeName} (busy with #${w.heldByNumber})`).join('\n')
+            : undefined
+        }
+      >
+        {status.queueLength} queued{waiting.length > 0 ? `, ${waiting.length} waiting for a worktree` : ''}
+      </span>
     ) : null;
   const blocked = status.blockedProjects ?? [];
   const blockedNote = <BlockedNote blocked={blocked} />;
@@ -57,11 +67,10 @@ function WorkerStatusPill() {
       <button
         type="button"
         onClick={() => nav.openTicket(ticketId)}
-        className="working-edge inline-flex h-8 animate-fade-in items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 text-meta font-medium text-violet-800 transition-colors hover:border-violet-300 hover:bg-violet-100"
+        className="inline-flex h-8 animate-fade-in items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 text-meta font-medium text-violet-800 transition-colors hover:border-violet-300 hover:bg-violet-100"
         aria-label={`Worker is working on ticket ${status.ticketNumber ?? ''}${blockedLabel}. Open ticket.`}
       >
         <span aria-hidden="true" className="relative flex size-2">
-          <span className="absolute inset-0 animate-ping rounded-full bg-violet-400 opacity-60" />
           <span className="relative size-2 rounded-full bg-violet-500" />
         </span>
         Working on #{status.ticketNumber ?? '…'}

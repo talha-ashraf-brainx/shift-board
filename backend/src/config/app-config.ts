@@ -3,7 +3,7 @@
  * built once at startup from the environment. Inject it by class:
  *   constructor(private readonly config: AppConfig) {}
  *
- * Never log `anthropicApiKey`.
+ * Never log `anthropicApiKey` or `s3.secretKey`.
  */
 export abstract class AppConfig {
   abstract readonly databaseUrl: string;
@@ -25,4 +25,15 @@ export abstract class AppConfig {
   abstract readonly pollIntervalMs: number;
   abstract readonly apiPort: number;
   abstract readonly webOrigin: string;
+  /** S3-compatible object store for image attachments (local MinIO by default). Never log `secretKey`. */
+  abstract readonly s3: S3Config;
+}
+
+export interface S3Config {
+  readonly endpoint: string;
+  readonly region: string;
+  readonly bucket: string;
+  readonly accessKey: string;
+  readonly secretKey: string;
+  readonly forcePathStyle: boolean;
 }

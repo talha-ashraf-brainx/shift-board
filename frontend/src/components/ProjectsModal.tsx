@@ -10,6 +10,7 @@ import { Modal } from './Modal';
 import { AddProjectForm, EditProjectForm } from './ProjectForm';
 import { RepoNotReadyDot } from './ProjectSwitcher';
 import { Skeleton } from './Skeleton';
+import { WorktreesPanel } from './WorktreesPanel';
 
 type View =
   | { kind: 'list' }
@@ -96,6 +97,7 @@ function ProjectRow({ project, onEdit, onDelete }: { project: ProjectDto; onEdit
         {!ready && project.repoStatus.reason ? (
           <p className="mt-1 text-[12px] break-words text-amber-800">{project.repoStatus.reason}</p>
         ) : null}
+        <WorktreesPanel project={project} />
       </div>
       <div className="flex shrink-0 gap-1.5">
         <Button size="sm" icon={<Icon name="edit" width={13} height={13} />} onClick={onEdit} aria-label={`Edit ${project.name}`}>

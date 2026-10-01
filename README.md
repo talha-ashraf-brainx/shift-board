@@ -15,6 +15,7 @@ scripts/    seed-sample-repo.sh   creates a small sample repo with obvious bugs
 
 - Node.js 20+ (developed on 24.2) and pnpm 9+ (developed on 11.8)
 - PostgreSQL 16, either via `docker compose up -d` or a local install
+- For image attachments: an S3-compatible store. `docker compose up -d minio` starts MinIO (API on 9000, console on 9001, login `minioadmin`/`minioadmin`); the API creates the bucket at startup. Without it the board still runs, and image uploads answer 503.
 - git
 - Claude credentials, either:
   - `ANTHROPIC_API_KEY` in `.env`, or
@@ -24,7 +25,7 @@ scripts/    seed-sample-repo.sh   creates a small sample repo with obvious bugs
 
 ```bash
 pnpm install
-docker compose up -d              # or use a local Postgres with user/db "board"
+docker compose up -d              # Postgres + MinIO; or use a local Postgres with user/db "board"
 cp .env.example .env              # then edit the paths (see below)
 scripts/seed-sample-repo.sh       # creates ~/agent-board-sample (optional, for trying it out)
 pnpm db:migrate
@@ -48,12 +49,16 @@ Projects (repo path, base branch, project rules, extra allowed tools) are manage
 | `ANTHROPIC_API_KEY` | `sk-ant-...` | No. Empty means use the local `claude` CLI login |
 | `TARGET_REPO_PATH` | `/Users/me/agent-board-sample` | No. Seeds the default project (see above); an invalid value only logs a warning |
 | `BASE_BRANCH` | `main` | No. Base branch of the seeded project; defaults to the repo's current branch |
-| `WORKTREES_DIR` | `/Users/me/.agent-board/worktrees` | Yes. Root for all worktrees (`<root>/<project-slug>/ticket-<n>`); must be outside every project repo; created if missing |
+| `WORKTREES_DIR` | `/Users/me/.agent-board/worktrees` | Yes. Root for all worktrees (`<root>/<project-slug>/worktrees/<name>`); must be outside every project repo; created if missing |
 | `AGENT_MODEL` | (blank = SDK default) | No |
 | `AGENT_MAX_TURNS` | `60` | No |
 | `AGENT_EXTRA_ALLOWED_TOOLS` | `Bash(npm test:*),Bash(node:*)` | No. Comma-separated; applies to every project (each project can add its own) |
 | `POLL_INTERVAL_MS` | `3000` | No |
 | `API_PORT` / `WEB_ORIGIN` | `3000` / `http://localhost:5173` | No |
+| `S3_ENDPOINT` | `http://localhost:9000` | No. S3-compatible store for image attachments (MinIO from `docker-compose.yml`) |
+| `S3_REGION` / `S3_BUCKET` | `us-east-1` / `shiftboard-attachments` | No. The bucket is created at startup if missing |
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | `minioadmin` / `minioadmin` | No. Defaults match the compose MinIO; the secret is never logged |
+| `S3_FORCE_PATH_STYLE` | `true` | No. Path-style URLs (needed for MinIO); `false` for virtual-hosted buckets |
 | `TEST_DATABASE_URL` | `postgres://board:board@localhost:5432/board_test` | Only for backend tests |
 
 ## Scripts
@@ -86,7 +91,7 @@ flowchart LR
    - It claims the ticket with one atomic `UPDATE … WHERE id = (SELECT … FOR UPDATE SKIP LOCKED)`, so two workers can never take the same ticket.
    - The worker wakes immediately when a ticket is created or requeued; otherwise it polls.
    - An urgent ticket never interrupts a run in progress.
-2. **Worktree.** Each ticket gets its own branch `agent/ticket-<n>` (ticket numbers are global) and a git worktree in `WORKTREES_DIR/<project-slug>/ticket-<n>`, created from the project's base branch. A resumed ticket reuses both; tickets created before projects keep their stored worktree path.
+2. **Worktree.** Each project has shared worktrees in `WORKTREES_DIR/<project-slug>/worktrees/<name>`; one (`main`) is created with the project, more can be added under Manage projects, and one is marked as the worktree new tickets use. The ticket gets its own branch `agent/ticket-<n>` (ticket numbers are global), created from the base branch and checked out in that worktree. A worktree holds one ticket at a time: while it is in progress, needs context or is in review, other tickets for that worktree wait. A resumed ticket goes back to the same worktree and branch. Tickets started before shared worktrees keep their own per-ticket worktree until they finish.
 3. **Agent run.** `query()` runs in the worktree using the Claude Code system prompt plus the board's rules.
    - The prompt names the project, and includes the global rules (Settings), the project's rules and the ticket's own rules.
    - Allowed tools = the base set + `AGENT_EXTRA_ALLOWED_TOOLS` + the project's extra tools + the board tools.
@@ -97,19 +102,19 @@ flowchart LR
    | Tool | Effect |
    | --- | --- |
    | `submit_fix` | Moves the ticket to Review |
-   | `request_context` | Moves it to Needs context, with 1–5 questions |
+   | `request_context` | Moves it to Needs context, with 1–5 questions, each with up to 4 suggested options (or none for an open question) |
    | `give_up` | Moves it to Failed |
    | `add_note` | Adds a progress note; doesn't finish the run |
 
    The outcome is decided from these tool calls, not from parsing the agent's prose. If a run ends without a finishing call, the agent is reminded once in the same session; if it still doesn't finish, the ticket fails.
    - On `submit_fix`, the worker commits anything the agent left uncommitted. If there are no changes at all, the ticket fails.
 5. **Review.** The ticket drawer shows the agent's summary, its testing notes and the diff.
-   - **Approve** runs `git merge --no-ff` into the project's base branch in its main checkout, then removes the worktree and branch. The diff is snapshotted, so it can still be viewed on the done ticket.
+   - **Approve** runs `git merge --no-ff` into the project's base branch in its main checkout, then deletes the branch and puts the worktree back on the base branch for the next ticket. The diff is snapshotted, so it can still be viewed on the done ticket.
    - On a merge conflict, the merge is aborted, the API returns 409 with the conflicting files, and the ticket stays in Review.
    - **Reject** requeues the ticket with your feedback.
 6. **Live updates.** Every change is pushed over Socket.IO, using the events `ticket.created`, `ticket.updated`, `ticket.event`, `agent.status` and `project.created`/`project.updated`/`project.deleted`, and the web app patches its query cache.
 
-Deleting a project is refused (409) while it has pending, in-progress, needs-context or review tickets. Otherwise its remaining worktrees and branches are removed and its tickets are deleted with it.
+Deleting a project is refused (409) while it has pending, in-progress, needs-context or review tickets. Otherwise its worktrees and remaining branches are removed and its tickets are deleted with it.
 
 ### Sessions and resume
 
@@ -117,12 +122,12 @@ The SDK `session_id` is saved on the ticket from the first run, and every later 
 
 | Requeued after | Prompt |
 | --- | --- |
-| Needs context | "The board owner answered your questions:" followed by question/answer pairs, then "Continue working on the ticket." |
+| Needs context | "The board owner answered your questions:" followed by question/answer pairs (and any extra note), then "Continue working on the ticket." |
 | Review | "Your fix was reviewed and rejected. Reviewer feedback:" followed by the feedback, then "Revise your work on the same branch." |
 | Failed (Retry) | "The previous run failed with: …", plus the optional note, then "Try again." |
 | Crash recovery | "The previous run was interrupted (the API restarted). Continue working on the ticket." |
 
-**Start fresh** (in the drawer) clears the session. It can optionally also reset the worktree to the project's base branch.
+**Start fresh** (in the drawer) clears the session. It can optionally also reset the ticket's branch to the project's base branch.
 
 ### Failure handling
 
@@ -130,7 +135,7 @@ The SDK `session_id` is saved on the ticket from the first run, and every later 
 - **Crash recovery.**
   - On startup, any ticket left `in_progress` goes back to Pending, with a system event explaining why.
   - The worker spawns the Claude CLI itself and records its PID in `WORKTREES_DIR/.agent-pids/`. On startup, any agent process left over from a crashed API is killed before its ticket is requeued.
-- **Cancel** aborts a running agent, then removes the worktree and branch.
+- **Cancel** aborts a running agent, then deletes the branch and hands the worktree back.
 - **Pause** (the header switch) stops new claims; it never interrupts the current run.
 - **Repo check per project.** A project whose main checkout isn't on its base branch or has uncommitted changes is skipped (see Queue) until it's clean again; the worker itself is never paused for it.
 
@@ -141,6 +146,7 @@ The SDK `session_id` is saved on the ticket from the first run, and every later 
   - Allowed: `Read`, `Edit`, `Write`, `Glob`, `Grep`, `git status`/`diff`/`add`/`commit`, the four board tools, and whatever you add via `AGENT_EXTRA_ALLOWED_TOOLS`.
   - Blocked: `WebFetch`, `WebSearch`, `git push`, `git checkout`.
 - **API key.** It is never logged.
+- **Images.** Uploads (`POST /api/attachments`, field `file`) accept PNG, JPEG, GIF and WebP up to 10 MB, checked by magic bytes, not the declared type. They are served with `X-Content-Type-Options: nosniff`. Markdown references to `/api/attachments/<id>` in the ticket description, answers and reject feedback are sent to the agent as image input (at most 10 per prompt, at most 5 MB each).
 - **Auth.** There is none (this is a POC). Don't expose the API beyond localhost.
 
 ## Tests
@@ -152,6 +158,7 @@ The SDK `session_id` is saved on the ticket from the first run, and every later 
   - the git service, against temporary repos
   - prompt builders, resume-mode detection, board tools, log throttling, worker outcome resolution, and orphan-process cleanup
   - config validation
+  - image attachments: magic-byte detection, markdown references, S3 storage (mocked), and images in agent prompts
   - HTTP and Socket.IO end-to-end tests
 
 ## Acceptance run
@@ -164,7 +171,7 @@ Run on 2026-10-01 against `~/agent-board-sample`:
 | A clear bug ends in Review with a summary, testing notes, a commit on `agent/ticket-<n>`, and a correct diff | ✅ |
 | A vague ticket ends in Needs context; answering it resumes the same `sessionId` | ✅ The same session continued across three runs, then reached Review |
 | A rejection produces a revised fix on the same branch | ✅ A second commit on the same branch, in the same session |
-| Approve merges and removes the worktree; a merge conflict shows an error and leaves the ticket in Review | ✅ 409 with the conflicting file; the merge was aborted and the base left clean |
+| Approve merges and frees the worktree; a merge conflict shows an error and leaves the ticket in Review | ✅ 409 with the conflicting file; the merge was aborted and the base left clean |
 | Ticket rules visibly change behavior | ✅ The agent added the exact comment the rule required and left the tests alone |
 | Killing the API mid-run and restarting returns the ticket to Pending | ✅ The ticket was recovered with a system event, re-run, and reached Review |
 | The board updates live in a second tab | ✅ A second Socket.IO client received every event |

@@ -10,7 +10,27 @@ function MarkdownLink({ node: _node, children, ...props }: ComponentPropsWithout
   );
 }
 
-const COMPONENTS: Components = { a: MarkdownLink };
+/** Images open full size in a new tab. Upload placeholders (see useImageAttachments) render as a chip. */
+function MarkdownImage({ node: _node, src, alt, ...props }: ComponentPropsWithoutRef<'img'> & ExtraProps) {
+  if (typeof src !== 'string' || !src || src.startsWith('uploading-')) {
+    return <span className="rounded bg-stone-100 px-1.5 py-0.5 text-[12px] text-muted">{alt || 'Image'}</span>;
+  }
+  return (
+    <a href={src} target="_blank" rel="noreferrer noopener" className="my-1 inline-block max-w-full align-top" title={alt || undefined}>
+      <img
+        {...props}
+        src={src}
+        alt={alt ?? ''}
+        loading="lazy"
+        decoding="async"
+        referrerPolicy="no-referrer"
+        className="block max-h-96 max-w-full rounded-control border border-line bg-page object-contain"
+      />
+    </a>
+  );
+}
+
+const COMPONENTS: Components = { a: MarkdownLink, img: MarkdownImage };
 
 /** Renders untrusted markdown (raw HTML is not rendered by react-markdown). */
 export function Markdown({ children, className }: { children: string; className?: string }) {

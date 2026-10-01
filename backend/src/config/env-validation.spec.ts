@@ -40,6 +40,14 @@ describe('buildAppConfig', () => {
       apiPort: 3000,
       webOrigin: 'http://localhost:5173',
       agentExtraAllowedTools: [],
+      s3: {
+        endpoint: 'http://localhost:9000',
+        region: 'us-east-1',
+        bucket: 'shiftboard-attachments',
+        accessKey: 'minioadmin',
+        secretKey: 'minioadmin',
+        forcePathStyle: true,
+      },
     });
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('claude'));
   });
@@ -107,5 +115,42 @@ describe('buildAppConfig', () => {
       apiPort: 4000,
       webOrigin: 'http://x',
     });
+  });
+
+  it('parses the S3 settings', () => {
+    const c = buildAppConfig(
+      {
+        ...base(),
+        S3_ENDPOINT: 'https://s3.example.com',
+        S3_REGION: 'eu-west-1',
+        S3_BUCKET: 'imgs',
+        S3_ACCESS_KEY: 'ak',
+        S3_SECRET_KEY: 'sk',
+        S3_FORCE_PATH_STYLE: 'false',
+      },
+      silent,
+    );
+    expect(c.s3).toEqual({
+      endpoint: 'https://s3.example.com',
+      region: 'eu-west-1',
+      bucket: 'imgs',
+      accessKey: 'ak',
+      secretKey: 'sk',
+      forcePathStyle: false,
+    });
+  });
+
+  it('rejects a bad S3_ENDPOINT or S3_FORCE_PATH_STYLE', () => {
+    let err: ConfigValidationError | undefined;
+    try {
+      buildAppConfig({ ...base(), S3_ENDPOINT: 'not a url', S3_FORCE_PATH_STYLE: 'maybe' }, silent);
+    } catch (e) {
+      err = e as ConfigValidationError;
+    }
+    expect(err!.problems).toEqual([
+      expect.stringContaining('S3_ENDPOINT is not a valid URL'),
+      expect.stringContaining('S3_FORCE_PATH_STYLE must be true or false'),
+    ]);
+    expect(() => buildAppConfig({ ...base(), S3_ENDPOINT: 'ftp://x' }, silent)).toThrow(/http\(s\)/);
   });
 });

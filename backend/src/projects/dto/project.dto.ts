@@ -1,4 +1,4 @@
-import type { CreateProjectInput, UpdateProjectInput } from '@agent-board/shared';
+import type { CreateProjectInput, CreateWorktreeInput, UpdateProjectInput } from '@agent-board/shared';
 import { Transform } from 'class-transformer';
 import { ArrayMaxSize, IsArray, IsNotEmpty, IsOptional, IsString, Length, MaxLength } from 'class-validator';
 import { Trim, TrimToNull } from '../../common/transformers';
@@ -78,6 +78,13 @@ export class UpdateProjectDto implements UpdateProjectInput {
   @IsString({ each: true, message: 'extraAllowedTools must be an array of strings' })
   @MaxLength(500, { each: true })
   extraAllowedTools?: string[];
+}
+
+export class CreateWorktreeDto implements CreateWorktreeInput {
+  @Trim()
+  @IsString()
+  @Length(1, 40, { message: 'name must be between 1 and 40 characters' })
+  name!: string;
 }
 
 export class InspectQueryDto {

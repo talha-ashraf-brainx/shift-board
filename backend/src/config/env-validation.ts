@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
 import { Logger } from '@nestjs/common';
-import { AppConfig } from './app-config';
+import { AppConfig, type S3Config } from './app-config';
 
 export class ConfigValidationError extends Error {
   constructor(readonly problems: string[]) {
@@ -19,6 +19,13 @@ export const CONFIG_DEFAULTS = {
   pollIntervalMs: 3000,
   apiPort: 3000,
   webOrigin: 'http://localhost:5173',
+  // Match the MinIO service in docker-compose.yml.
+  s3Endpoint: 'http://localhost:9000',
+  s3Region: 'us-east-1',
+  s3Bucket: 'shiftboard-attachments',
+  s3AccessKey: 'minioadmin',
+  s3SecretKey: 'minioadmin',
+  s3ForcePathStyle: true,
 } as const;
 
 /**
@@ -83,6 +90,14 @@ export function buildAppConfig(env: Env = process.env, logger = new Logger('Conf
       return def;
     }
     return n;
+  };
+  const bool = (name: string, def: boolean): boolean => {
+    const v = str(name)?.toLowerCase();
+    if (v === undefined) return def;
+    if (['true', '1', 'yes'].includes(v)) return true;
+    if (['false', '0', 'no'].includes(v)) return false;
+    problems.push(`${name} must be true or false (got "${env[name]?.trim()}")`);
+    return def;
   };
 
   const databaseUrl = required('DATABASE_URL');
@@ -149,6 +164,21 @@ export function buildAppConfig(env: Env = process.env, logger = new Logger('Conf
   const agentExtraAllowedTools = parseToolList(env.AGENT_EXTRA_ALLOWED_TOOLS);
   const anthropicApiKey = str('ANTHROPIC_API_KEY') ?? null;
 
+  const s3Endpoint = str('S3_ENDPOINT') ?? CONFIG_DEFAULTS.s3Endpoint;
+  try {
+    if (!/^https?:$/.test(new URL(s3Endpoint).protocol)) problems.push('S3_ENDPOINT must be an http(s):// URL');
+  } catch {
+    problems.push(`S3_ENDPOINT is not a valid URL (got "${s3Endpoint}")`);
+  }
+  const s3: S3Config = {
+    endpoint: s3Endpoint,
+    region: str('S3_REGION') ?? CONFIG_DEFAULTS.s3Region,
+    bucket: str('S3_BUCKET') ?? CONFIG_DEFAULTS.s3Bucket,
+    accessKey: str('S3_ACCESS_KEY') ?? CONFIG_DEFAULTS.s3AccessKey,
+    secretKey: str('S3_SECRET_KEY') ?? CONFIG_DEFAULTS.s3SecretKey,
+    forcePathStyle: bool('S3_FORCE_PATH_STYLE', CONFIG_DEFAULTS.s3ForcePathStyle),
+  };
+
   if (problems.length > 0) throw new ConfigValidationError(problems);
 
   for (const w of seedWarnings) logger.warn(`${w}; no default project will be seeded from it.`);
@@ -170,6 +200,7 @@ export function buildAppConfig(env: Env = process.env, logger = new Logger('Conf
     pollIntervalMs,
     apiPort,
     webOrigin,
+    s3: Object.freeze(s3),
   };
   return Object.freeze(Object.assign(Object.create(AppConfig.prototype) as AppConfig, values));
 }

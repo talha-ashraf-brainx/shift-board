@@ -99,6 +99,74 @@ export class GitService implements GitOperations {
     return { branchName, worktreePath };
   }
 
+  // Shared worktrees: one or more per project, reused by tickets one at a time.
+
+  async ensureSharedWorktree(path: string): Promise<void> {
+    let registered = await this.listWorktrees();
+    if (registered.some((w) => samePath(w.path, path))) {
+      if (existsSync(path)) return;
+      await this.run(['worktree', 'prune'], this.repo);
+      registered = await this.listWorktrees();
+    }
+    if (existsSync(path)) await this.removeLeftoverDir(path);
+    await mkdir(dirname(path), { recursive: true });
+    await this.run(['worktree', 'add', '--detach', path, this.base], this.repo);
+  }
+
+  async checkoutTicketBranch(path: string, ticket: GitTicketRef): Promise<WorktreeInfo> {
+    const branchName = this.branchNameFor(ticket.number);
+    const current = await this.currentBranchOf(path);
+    if (await this.hasUncommittedChanges(path)) {
+      if (current?.startsWith('agent/')) {
+        await this.commitAll(path, `WIP: work left in the worktree by ${current}`);
+      } else {
+        await this.run(['reset', '--hard'], path);
+        await this.run(['clean', '-fd'], path);
+      }
+    }
+    if (current === branchName) return { branchName, worktreePath: path };
+
+    const elsewhere = (await this.listWorktrees()).find((w) => w.branch === branchName && !samePath(w.path, path));
+    if (elsewhere) {
+      throw new GitError(`Branch '${branchName}' is already checked out at ${elsewhere.path}`, [], null, '');
+    }
+    if (await this.branchExists(branchName)) {
+      await this.run(['checkout', branchName], path);
+    } else {
+      await this.run(['checkout', '-b', branchName, this.base], path);
+    }
+    return { branchName, worktreePath: path };
+  }
+
+  async releaseSharedWorktree(path: string, ticket: GitTicketRef, opts: { deleteBranch: boolean }): Promise<void> {
+    const branchName = this.branchNameFor(ticket.number);
+    if (existsSync(path) && (await this.currentBranchOf(path)) === branchName) {
+      await this.run(['checkout', '-f', '--detach', this.base], path);
+      await this.run(['clean', '-fd'], path);
+    }
+    if (!opts.deleteBranch || !(await this.branchExists(branchName))) return;
+    const checkedOut = (await this.listWorktrees()).some((w) => w.branch === branchName);
+    if (!checkedOut) await this.run(['branch', '-D', branchName], this.repo);
+  }
+
+  async removeSharedWorktree(path: string): Promise<void> {
+    if ((await this.listWorktrees()).some((w) => samePath(w.path, path))) {
+      await this.tryRun(['worktree', 'remove', '--force', path], this.repo);
+    }
+    if (existsSync(path)) await this.removeLeftoverDir(path);
+    await this.tryRun(['worktree', 'prune'], this.repo);
+  }
+
+  async resetTicketBranchToBase(path: string, ticket: GitTicketRef): Promise<void> {
+    const branchName = this.branchNameFor(ticket.number);
+    if (existsSync(path) && (await this.currentBranchOf(path)) === branchName) {
+      await this.run(['reset', '--hard', this.base], path);
+      await this.run(['clean', '-fd'], path);
+    } else if (await this.branchExists(branchName)) {
+      await this.run(['branch', '-f', branchName, this.base], this.repo);
+    }
+  }
+
   async removeWorktree(ticket: GitTicketRef, opts: { deleteBranch: boolean }): Promise<void> {
     const branchName = this.branchNameFor(ticket.number);
     const worktreePath = this.pathOf(ticket);
@@ -248,6 +316,12 @@ export class GitService implements GitOperations {
   private async branchExists(branchName: string): Promise<boolean> {
     const res = await this.tryRun(['rev-parse', '--verify', '--quiet', `refs/heads/${branchName}`], this.repo);
     return res.code === 0;
+  }
+
+  /** The branch checked out in `cwd`, or null when detached. */
+  private async currentBranchOf(cwd: string): Promise<string | null> {
+    const head = await this.tryRun(['symbolic-ref', '--short', '-q', 'HEAD'], cwd);
+    return head.code === 0 ? head.stdout.trim() || null : null;
   }
 
   private async listWorktrees(): Promise<RegisteredWorktree[]> {

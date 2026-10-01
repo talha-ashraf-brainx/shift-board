@@ -143,6 +143,14 @@ describe('API smoke (e2e)', () => {
 
     const reject = await http().post(`/api/tickets/${randomUUID()}/reject`).send({ feedback: '' }).expect(400);
     expect(reject.body.message).toBe('feedback is required');
+    const answer = `/api/tickets/${randomUUID()}/answer`;
+    expect((await http().post(answer).send({ message: ' ' }).expect(400)).body.message).toBe('message or answers is required');
+    expect(
+      (await http().post(answer).send({ answers: [{ question: 'Q?', selected: [], other: '' }] }).expect(400)).body.message,
+    ).toBe('message or answers is required');
+    await http().post(answer).send({ answers: [{ question: 'Q?', selected: 'Login' }] }).expect(400);
+    await http().post(answer).send({ answers: [{ question: 'Q?', selected: [], other: 'x', extra: 1 }] }).expect(400);
+    await http().post(answer).send({ answers: [{ question: 'Q?', selected: ['Login'] }] }).expect(404);
     await http().put('/api/settings').send({ workerEnabled: 'yes' }).expect(400);
   });
 

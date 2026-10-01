@@ -5,8 +5,12 @@ import {
   TicketPriority,
   TicketStatus,
   TransitionActor,
+  answerText,
   compareTickets,
+  formatAnswersBody,
   isTransitionAllowed,
+  normalizeAnswers,
+  normalizeQuestions,
   ticketSubject,
   ticketTitle,
 } from '../index';
@@ -43,4 +47,32 @@ test('only the worker moves tickets into in_progress', () => {
 test('done cannot be cancelled', () => {
   assert.deepEqual(HUMAN_ALLOWED_TRANSITIONS[TicketStatus.Done], []);
   assert.ok(HUMAN_ALLOWED_TRANSITIONS[TicketStatus.Review].includes(TicketStatus.Done));
+});
+
+test('normalizeQuestions reads structured questions and old string questions', () => {
+  assert.deepEqual(
+    normalizeQuestions([
+      'Old question?',
+      { question: ' Which? ', header: ' Scope ', options: [{ label: 'A', description: ' ' }, { label: '' }], multiSelect: true },
+      { question: 'Free?', options: [], multiSelect: true },
+      { question: '' },
+      42,
+    ]),
+    [
+      { question: 'Old question?', options: [] },
+      { question: 'Which?', header: 'Scope', options: [{ label: 'A' }], multiSelect: true },
+      { question: 'Free?', options: [] },
+    ],
+  );
+  assert.deepEqual(normalizeQuestions(undefined), []);
+});
+
+test('answers: normalize, text and markdown body', () => {
+  const answers = normalizeAnswers([{ question: 'Q?', selected: ['A', ' '], other: ' more ' }, { question: 'R?', selected: [] }]);
+  assert.deepEqual(answers, [
+    { question: 'Q?', selected: ['A'], other: 'more' },
+    { question: 'R?', selected: [], other: null },
+  ]);
+  assert.equal(answerText(answers[0]!), 'A; more');
+  assert.equal(formatAnswersBody(answers, 'note'), '**Q?**\n\nA; more\n\n**R?**\n\n_(no answer)_\n\n**Note:**\n\nnote');
 });

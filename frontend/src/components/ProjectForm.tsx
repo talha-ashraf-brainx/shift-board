@@ -194,6 +194,8 @@ function ProjectFields({
 
         <MarkdownField
           label="Project rules"
+          // Rules go into the system prompt as text; the agent would never see an image there.
+          images={false}
           value={rules}
           onChange={setRules}
           rows={6}

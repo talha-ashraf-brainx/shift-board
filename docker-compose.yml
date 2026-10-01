@@ -15,5 +15,26 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+  # Image attachments (S3-compatible). The API creates the bucket at startup. Console: http://localhost:9001
+  # (The upstream minio/minio image is no longer published on Docker Hub; this is Bitnami's packaged build.)
+  minio:
+    image: bitnamilegacy/minio:2025.5.24-debian-12-r5
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_CONSOLE_PORT_NUMBER: "9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/bitnami/minio/data
+    healthcheck:
+      # The image has no curl: probe the liveness endpoint with bash's /dev/tcp.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /minio/health/live HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q ' 200 ' <&3"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 volumes:
   pgdata:
+  miniodata:

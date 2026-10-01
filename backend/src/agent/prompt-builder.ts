@@ -36,6 +36,8 @@ export interface PromptTicket {
 export interface QaPair {
   question: string;
   answer: string;
+  /** The answer was given to this question alone (a structured answer); never grouped with others. */
+  own?: boolean;
 }
 
 function orNone(text: string | null | undefined): string {
@@ -89,16 +91,18 @@ export function buildFirstRunPrompt(ticket: PromptTicket): string {
  *
  * Consecutive pairs that share the same answer (one human reply covering several
  * questions, the usual case) are grouped: the questions are listed, then the answer once.
+ * Pairs marked `own` (answered one question at a time) are never grouped.
  * A pair with an empty question (no recorded questions) prints only the answer.
+ * An optional extra note from the owner follows the answers.
  */
-export function buildAnswerResumePrompt(qaPairs: QaPair[]): string {
-  const groups: { questions: string[]; answer: string }[] = [];
+export function buildAnswerResumePrompt(qaPairs: QaPair[], note?: string): string {
+  const groups: { questions: string[]; answer: string; own?: boolean }[] = [];
   for (const pair of qaPairs) {
     const last = groups[groups.length - 1];
-    if (last && last.answer === pair.answer) {
+    if (last && !last.own && !pair.own && last.answer === pair.answer) {
       if (pair.question.trim()) last.questions.push(pair.question.trim());
     } else {
-      groups.push({ questions: pair.question.trim() ? [pair.question.trim()] : [], answer: pair.answer });
+      groups.push({ questions: pair.question.trim() ? [pair.question.trim()] : [], answer: pair.answer, own: pair.own });
     }
   }
 
@@ -116,6 +120,7 @@ export function buildAnswerResumePrompt(qaPairs: QaPair[]): string {
     }
     return lines.join('\n');
   });
+  if (note?.trim()) blocks.push(`Note from the board owner: ${note.trim()}`);
 
   return ['The board owner answered your questions:', '', ...joinBlocks(blocks), '', 'Continue working on the ticket.'].join(
     '\n',

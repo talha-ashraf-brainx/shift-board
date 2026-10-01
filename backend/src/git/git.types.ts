@@ -38,7 +38,22 @@ export type RepoCleanCheck = { clean: true } | { clean: false; reason: string };
 export interface GitOperations {
   branchNameFor(ticketNumber: number): string; // agent/ticket-<n>
   worktreePathFor(ticketNumber: number): string; // <WORKTREES_DIR>/ticket-<n>
+  /** Legacy layout: a worktree per ticket. New tickets use the project's shared worktrees below. */
   createWorktree(ticket: GitTicketRef): Promise<WorktreeInfo>;
+  /** Adds the shared worktree at `path` (detached at the base branch) unless it already exists. */
+  ensureSharedWorktree(path: string): Promise<void>;
+  /**
+   * Checks out the ticket's branch in the shared worktree, creating it from the base branch when
+   * new. Leftover uncommitted work is committed onto the agent branch it belongs to (or dropped
+   * when the worktree is not on an agent branch) first.
+   */
+  checkoutTicketBranch(path: string, ticket: GitTicketRef): Promise<WorktreeInfo>;
+  /** Detaches the shared worktree back to the base branch when it holds the ticket's branch. */
+  releaseSharedWorktree(path: string, ticket: GitTicketRef, opts: { deleteBranch: boolean }): Promise<void>;
+  /** Removes a shared worktree from git and disk. */
+  removeSharedWorktree(path: string): Promise<void>;
+  /** "Start fresh" for a ticket in a shared worktree: its branch goes back to the base branch. */
+  resetTicketBranchToBase(path: string, ticket: GitTicketRef): Promise<void>;
   hasNewCommits(ticket: GitTicketRef): Promise<boolean>;
   hasUncommittedChanges(worktreePath: string): Promise<boolean>;
   commitAll(worktreePath: string, message: string): Promise<void>;

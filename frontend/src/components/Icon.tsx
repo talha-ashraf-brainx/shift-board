@@ -26,7 +26,8 @@ export type IconName =
   | 'branch'
   | 'sun'
   | 'moon'
-  | 'monitor';
+  | 'monitor'
+  | 'image';
 
 const PATHS: Record<IconName, string> = {
   plus: 'M8 3.5v9M3.5 8h9',
@@ -55,6 +56,7 @@ const PATHS: Record<IconName, string> = {
   sun: 'M8 10.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1',
   moon: 'M13.5 9.5A5.5 5.5 0 0 1 6.5 2.5a5.5 5.5 0 1 0 7 7Z',
   monitor: 'M2 3h12v8H2zM5.5 14h5M8 11v3',
+  image: 'M2.5 3h11v10h-11zM2.5 10.5l3-3 3 3 2-2 3 3M10.5 6v.01',
 };
 
 export function Icon({ name, ...rest }: { name: IconName } & SVGProps<SVGSVGElement>) {

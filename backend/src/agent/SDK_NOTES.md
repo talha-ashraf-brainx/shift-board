@@ -37,11 +37,18 @@ Checked against `node_modules/@anthropic-ai/claude-agent-sdk/sdk.d.ts`.
    (they help diagnose, for example, a missing CLI login). They are never logged as ticket events.
 9. Streamed `assistant` messages usually hold a single content block, so text excerpts are also time-throttled (at most one every 15 s,
    160 chars).
+10. **Images in prompts** use streaming input: `prompt` may be an `AsyncIterable<SDKUserMessage>` instead of a string. The SDK turns a
+   string prompt into exactly such a message (`{ type: 'user', session_id: '', parent_tool_use_id: null, message: { role: 'user',
+   content: [{ type: 'text', text }] } }`), so `AgentRunner.buildPrompt` sends the same shape with `image` blocks
+   (`source: { type: 'base64', media_type, data }`) appended. `resume`, `abortController` and `mcpServers` work the same in both
+   modes. With in-process MCP servers the SDK waits for the run to end before closing stdin, so an iterable that yields one message
+   is still a single turn. Prompts without `/api/attachments/<id>` references stay plain strings.
 
 ## Resume prompts (documented for the README)
 - First run (no `sessionId`): the full ticket brief.
-- After an answer, a rejection or a retry: the texts from poc.md. A single human answer covering several questions is rendered as
-  the list of questions, then the answer once.
+- After an answer, a rejection or a retry: the texts from poc.md. Structured answers (one per question, from the
+  step-by-step answer form) pair each question with its own answer, then the optional note. An older single free-text
+  answer covering several questions is rendered as the list of questions, then the answer once.
 - After crash recovery (the ticket was requeued by the system from `in_progress`, and has a `sessionId`):
   "The previous run was interrupted (the API restarted). Continue working on the ticket."
 - If the agent ends without a finishing tool (and the result is not an error), the same session is resumed once with

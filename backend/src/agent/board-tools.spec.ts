@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   buildBoardServer,
   createBoardToolHandlers,
+  formatQuestionsBody,
   requestContextShape,
   type BoardEventsSink,
 } from './board-tools';
@@ -39,21 +40,48 @@ describe('board tools', () => {
 
   it('request_context records needs_context and one agent_question event', async () => {
     const { append, runState, h } = setup();
-    await h.request_context({ questions: ['Which file?', 'Keep the API?'], reason: 'Ambiguous' });
-    expect(runState).toMatchObject({
-      outcome: 'needs_context',
-      questions: ['Which file?', 'Keep the API?'],
-      reason: 'Ambiguous',
-      finishCalls: 1,
-    });
+    const questions = [
+      { question: 'Which file?', options: [] },
+      {
+        question: ' Keep the API? ',
+        header: ' API ',
+        options: [{ label: 'Keep it', description: ' Recommended: no breaking change ' }, { label: 'Drop it', description: ' ' }],
+      },
+      { question: 'Which browsers?', options: [{ label: 'Chrome' }, { label: 'Safari' }], multiSelect: true },
+    ];
+    const stored = [
+      { question: 'Which file?', options: [] },
+      {
+        question: 'Keep the API?',
+        header: 'API',
+        options: [{ label: 'Keep it', description: 'Recommended: no breaking change' }, { label: 'Drop it' }],
+      },
+      { question: 'Which browsers?', options: [{ label: 'Chrome' }, { label: 'Safari' }], multiSelect: true },
+    ];
+    await h.request_context({ questions, reason: 'Ambiguous' });
+    expect(runState).toMatchObject({ outcome: 'needs_context', questions: stored, reason: 'Ambiguous', finishCalls: 1 });
     expect(append).toHaveBeenCalledTimes(1);
     expect(append).toHaveBeenCalledWith({
       ticketId: 't1',
       type: TicketEventType.AgentQuestion,
       author: EventAuthor.Agent,
-      body: '1. Which file?\n2. Keep the API?\n\nReason: Ambiguous',
-      meta: { questions: ['Which file?', 'Keep the API?'], reason: 'Ambiguous' },
+      body: [
+        '1. Which file?',
+        '2. **API:** Keep the API?',
+        '   - Keep it: Recommended: no breaking change',
+        '   - Drop it',
+        '3. Which browsers? (pick any)',
+        '   - Chrome',
+        '   - Safari',
+        '',
+        'Reason: Ambiguous',
+      ].join('\n'),
+      meta: { questions: stored, reason: 'Ambiguous' },
     });
+  });
+
+  it('formatQuestionsBody ignores multiSelect on a free-text question', () => {
+    expect(formatQuestionsBody([{ question: 'Why?', options: [], multiSelect: true }], 'r')).toBe('1. Why?\n\nReason: r');
   });
 
   it('give_up records failed with the reason and writes no event', async () => {
@@ -78,7 +106,7 @@ describe('board tools', () => {
 
   it('rejects a second finishing call', async () => {
     const { append, runState, h } = setup();
-    await h.request_context({ questions: ['Q?'], reason: 'r' });
+    await h.request_context({ questions: [{ question: 'Q?', options: [] }], reason: 'r' });
     const second = await h.submit_fix({ summary: 's', testing: 't' });
     expect(second).toEqual({
       content: [{ type: 'text', text: 'You already finished this run with request_context.' }],
@@ -105,12 +133,21 @@ describe('board tools', () => {
 
   describe('request_context validation (1-5 questions)', () => {
     const schema = z.object(requestContextShape);
+    const q = (question: string, extra: Record<string, unknown> = {}) => ({ question, options: [], ...extra });
+    const opts = (n: number) => Array.from({ length: n }, (_, i) => ({ label: `Option ${i + 1}` }));
     it.each([
       [[], false],
-      [['a'], true],
-      [['a', 'b', 'c', 'd', 'e'], true],
-      [['a', 'b', 'c', 'd', 'e', 'f'], false],
-      [[''], false],
+      [[q('a')], true],
+      [['a', 'b', 'c', 'd', 'e'].map((x) => q(x)), true],
+      [['a', 'b', 'c', 'd', 'e', 'f'].map((x) => q(x)), false],
+      [[q('')], false],
+      [['a'], false],
+      [[q('a', { options: opts(4), multiSelect: true })], true],
+      [[q('a', { options: opts(5) })], false],
+      [[q('a', { options: [{ label: '' }] })], false],
+      [[q('a', { header: '12 chars max' })], true],
+      [[q('a', { header: 'thirteen char' })], false],
+      [[{ question: 'a' }], false],
     ])('questions %j valid=%s', (questions, valid) => {
       expect(schema.safeParse({ questions, reason: 'r' }).success).toBe(valid);
     });

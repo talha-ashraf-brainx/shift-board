@@ -5,6 +5,7 @@ import {
   type QueryClient,
 } from '@tanstack/react-query';
 import type {
+  AnswerInput,
   CreateProjectInput,
   CreateTicketInput,
   SettingsDto,
@@ -125,7 +126,7 @@ export function useUpdateTicket(options: { silent?: boolean; successMessage?: st
 export function useAnswerTicket() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, message }: { id: string; message: string }) => api.answer(id, { message }),
+    mutationFn: ({ id, ...input }: { id: string } & AnswerInput) => api.answer(id, input),
     onSuccess: onTicketSuccess(qc, (t) => `Answer sent; #${t.number} is back in the queue`),
     onError: onError('Could not send the answer'),
   });
@@ -228,6 +229,45 @@ export function useDeleteProject() {
       toast.success(`Deleted project ${name}`);
     },
     onError: onError('Could not delete the project'),
+  });
+}
+
+export function useAddWorktree() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ projectId, name }: { projectId: string; name: string }) => api.addWorktree(projectId, name),
+    onSuccess: (project, { name }) => {
+      applyProject(qc, project);
+      toast.success(`Added worktree ${name}`);
+    },
+    onError: onError('Could not add the worktree'),
+  });
+}
+
+export function useActivateWorktree() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ projectId, worktreeId }: { projectId: string; worktreeId: string; name: string }) =>
+      api.activateWorktree(projectId, worktreeId),
+    onSuccess: (project, { name }) => {
+      applyProject(qc, project);
+      void qc.invalidateQueries({ queryKey: queryKeys.agentStatus });
+      toast.success(`New tickets now run in ${name}`);
+    },
+    onError: onError('Could not switch the worktree'),
+  });
+}
+
+export function useRemoveWorktree() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ projectId, worktreeId }: { projectId: string; worktreeId: string; name: string }) =>
+      api.removeWorktree(projectId, worktreeId),
+    onSuccess: (project, { name }) => {
+      applyProject(qc, project);
+      toast.success(`Removed worktree ${name}`);
+    },
+    onError: onError('Could not remove the worktree'),
   });
 }
 

@@ -40,7 +40,7 @@ export class TicketsController {
   @Post(':id/answer')
   @HttpCode(200)
   async answer(@Id() id: string, @Body() body: AnswerDto): Promise<TicketDto> {
-    return this.tickets.toDto(await this.tickets.answer(id, body.message));
+    return this.tickets.toDto(await this.tickets.answer(id, body.message, body.answers));
   }
 
   @Post(':id/approve')

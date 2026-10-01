@@ -1,6 +1,8 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import type { AgentLogMeta } from '@agent-board/shared';
-import type { Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk' with { 'resolution-mode': 'import' };
+import type { Options, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk' with { 'resolution-mode': 'import' };
+import { AttachmentsService } from '../attachments/attachments.service';
+import { extractAttachmentIds } from '../attachments/image-files';
 import type { RunHandle } from '../common/run-registry.service';
 import { AppConfig } from '../config/app-config';
 import { EventsService } from '../events/events.service';
@@ -28,6 +30,12 @@ export const DISALLOWED_TOOLS = ['WebFetch', 'WebSearch', 'Bash(git push:*)', 'B
 const TEXT_LOG_MIN_INTERVAL_MS = 15_000;
 const TEXT_LOG_MAX_CHARS = 160;
 const STDERR_TAIL_LINES = 20;
+/** Images referenced from the prompt that are sent to the model, at most this many and this big each. */
+export const MAX_PROMPT_IMAGES = 10;
+export const MAX_PROMPT_IMAGE_BYTES = 5 * 1024 * 1024;
+
+type UserContent = Exclude<SDKUserMessage['message']['content'], string>;
+type ImageMediaType = 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
 
 export interface RunnerTicket {
   id: string;
@@ -79,6 +87,7 @@ export class AgentRunner {
     private readonly config: AppConfig,
     private readonly events: EventsService,
     @Optional() private readonly processes?: AgentProcessTracker,
+    @Optional() private readonly attachments?: AttachmentsService,
   ) {}
 
   /** base + AGENT_EXTRA_ALLOWED_TOOLS + the project's extra tools + board tools (deduped). */
@@ -143,7 +152,8 @@ export class AgentRunner {
     let lastTextAt = 0;
 
     try {
-      const stream = sdk.query({ prompt: params.prompt, options });
+      const prompt = await this.buildPrompt(params.prompt, ticket.number);
+      const stream = sdk.query({ prompt, options });
       for await (const msg of stream as AsyncIterable<SDKMessage>) {
         if (msg.type === 'system' && msg.subtype === 'init') {
           if (!outcome.sessionId) {
@@ -198,6 +208,43 @@ export class AgentRunner {
 
     if (handle.signal.aborted) outcome.aborted = true;
     return outcome;
+  }
+
+  /**
+   * The prompt as given, or, when it references image attachments (`/api/attachments/<id>`), a single
+   * streamed user message with the text followed by the images, so the model sees them like a pasted
+   * screenshot. Referenced images that are missing or unreadable are skipped (logged by the service).
+   */
+  async buildPrompt(text: string, ticketNumber: number): Promise<string | AsyncIterable<SDKUserMessage>> {
+    const ids = extractAttachmentIds(text);
+    if (!this.attachments || ids.length === 0) return text;
+    if (ids.length > MAX_PROMPT_IMAGES) {
+      this.logger.warn(`Ticket #${ticketNumber}: ${ids.length} images referenced; sending the first ${MAX_PROMPT_IMAGES}`);
+    }
+    const images = await this.attachments.loadImages(ids.slice(0, MAX_PROMPT_IMAGES), MAX_PROMPT_IMAGE_BYTES);
+    if (images.length === 0) return text;
+    this.logger.log(`Ticket #${ticketNumber}: sending ${images.length} image(s) with the prompt`);
+
+    const content: UserContent = [{ type: 'text', text }];
+    for (const img of images) {
+      // A label per image so the model can match it to its markdown reference.
+      content.push({ type: 'text', text: `Image ${img.filename} (/api/attachments/${img.id}):` });
+      content.push({
+        type: 'image',
+        source: { type: 'base64', media_type: img.mediaType as ImageMediaType, data: img.data },
+      });
+    }
+    // Same shape the SDK builds for a string prompt (empty session_id; `resume` picks the session).
+    // With in-process MCP servers the SDK keeps stdin open until the run ends, so one message is one turn.
+    const message: SDKUserMessage = {
+      type: 'user',
+      session_id: '',
+      parent_tool_use_id: null,
+      message: { role: 'user', content },
+    };
+    return (async function* () {
+      yield message;
+    })();
   }
 
   describeResultError(subtype: string, errors?: string[]): string {

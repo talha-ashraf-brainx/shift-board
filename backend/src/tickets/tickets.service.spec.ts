@@ -13,7 +13,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
 import { DataSource, type Repository } from 'typeorm';
 import { createFakeGit, fakeGitFactory } from '../../test/helpers/fake-git';
-import { insertTestProject, resetTestDatabase, testDatabaseUrl, truncateAll } from '../../test/helpers/test-db';
+import { insertTestProject, insertTestWorktree, resetTestDatabase, testDatabaseUrl, truncateAll } from '../../test/helpers/test-db';
 import { CommonModule } from '../common/common.module';
 import { RunRegistry } from '../common/run-registry.service';
 import { WorkerSignal } from '../common/worker-signal.service';
@@ -163,6 +163,8 @@ describe('TicketsService (Postgres)', () => {
         expect(c.status).toBe(TicketStatus.InProgress);
         expect(c.lockedAt).toBeInstanceOf(Date);
         expect(c.attemptCount).toBe(1);
+        // The project has one worktree; finishing the ticket frees it for the next.
+        await force(c.id, TicketStatus.Done);
       }
       expect(order).toEqual([urgent1.id, urgent2.id, high.id, med.id, med2.id, low.id]);
 
@@ -181,7 +183,11 @@ describe('TicketsService (Postgres)', () => {
     });
 
     it('two (or more) concurrent claims never return the same ticket', async () => {
-      for (let i = 0; i < 8; i++) await create(`t${i}`);
+      // Legacy tickets (own worktree each) are never held back, so all 8 are claimable at once.
+      for (let i = 0; i < 8; i++) {
+        const t = await create(`t${i}`);
+        await repo.update({ id: t.id }, { worktreePath: `/tmp/legacy/ticket-${t.number}` });
+      }
       const results = await Promise.all(Array.from({ length: 12 }, () => claimNext()));
       const ids = results.filter((r): r is TicketEntity => r !== null).map((r) => r.id);
       expect(ids).toHaveLength(8);
@@ -191,6 +197,51 @@ describe('TicketsService (Postgres)', () => {
         `SELECT count(*)::int AS n FROM ticket_events WHERE type = 'status_changed'`,
       );
       expect(claimEvents[0].n).toBe(8);
+    });
+  });
+
+  describe('claimNext with shared worktrees', () => {
+    it('assigns the active worktree and holds it while the ticket is in progress, needs context or in review', async () => {
+      const [main] = (await ds.query(`SELECT id FROM worktrees WHERE project_id = $1`, [projectId])) as Array<{ id: string }>;
+      const a = await create('a');
+      const b = await create('b');
+      const first = await claimNext();
+      expect(first?.id).toBe(a.id);
+      expect(first?.worktreeId).toBe(main!.id);
+      for (const held of [TicketStatus.InProgress, TicketStatus.NeedsContext, TicketStatus.Review]) {
+        await force(a.id, held);
+        expect(await claimNext()).toBeNull();
+      }
+      await force(a.id, TicketStatus.Failed);
+      expect((await claimNext())?.id).toBe(b.id);
+    });
+
+    it('concurrent claims in one worktree start a single ticket', async () => {
+      for (let i = 0; i < 5; i++) await create(`t${i}`);
+      const results = await Promise.all(Array.from({ length: 6 }, () => claimNext()));
+      expect(results.filter(Boolean)).toHaveLength(1);
+    });
+
+    it('a requeued ticket goes back to its worktree before any new ticket takes it', async () => {
+      const a = await create('a', TicketPriority.Low);
+      await claimNext();
+      await force(a.id, TicketStatus.Pending, { lockedAt: null }); // e.g. answered or rejected
+      const urgent = await create('urgent', TicketPriority.Urgent);
+      expect((await claimNext())?.id).toBe(a.id);
+      expect(await claimNext()).toBeNull();
+      await force(a.id, TicketStatus.Done);
+      expect((await claimNext())?.id).toBe(urgent.id);
+    });
+
+    it('a second worktree lets new tickets run while the first is held', async () => {
+      await create('a');
+      const b = await create('b');
+      await claimNext();
+      expect(await claimNext()).toBeNull();
+      const second = await insertTestWorktree(ds, projectId, 'second', { activate: true });
+      const claimed = await claimNext();
+      expect(claimed?.id).toBe(b.id);
+      expect(claimed?.worktreeId).toBe(second);
     });
   });
 
@@ -249,6 +300,30 @@ describe('TicketsService (Postgres)', () => {
       await expect(svc.answer(t.id, 'again')).rejects.toBeInstanceOf(ConflictException);
     });
 
+    it('answer: structured answers get a readable body and meta.answers', async () => {
+      const t = await create('x');
+      await force(t.id, TicketStatus.NeedsContext);
+      await expect(
+        svc.answer(t.id, '  ', [{ question: 'Which page?', selected: [], other: ' ' }]),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      const r = await svc.answer(t.id, ' Keep it small. ', [
+        { question: 'Which page?', selected: ['Login'], other: null },
+        { question: 'Which browsers?', selected: ['Chrome', 'Safari'], other: 'and Firefox' },
+      ]);
+      expect(r.status).toBe(TicketStatus.Pending);
+      const ans = (await events.listForTicket(t.id)).find((e) => e.type === TicketEventType.HumanAnswer)!;
+      expect(ans.body).toBe(
+        '**Which page?**\n\nLogin\n\n**Which browsers?**\n\nChrome; Safari; and Firefox\n\n**Note:**\n\nKeep it small.',
+      );
+      expect(ans.meta).toEqual({
+        answers: [
+          { question: 'Which page?', selected: ['Login'], other: null },
+          { question: 'Which browsers?', selected: ['Chrome', 'Safari'], other: 'and Firefox' },
+        ],
+        note: 'Keep it small.',
+      });
+    });
+
     it('reject: requires feedback, appends review_rejected, review -> pending', async () => {
       const t = await create('x');
       await force(t.id, TicketStatus.Review);
@@ -291,7 +366,7 @@ describe('TicketsService (Postgres)', () => {
       expect((await events.listForTicket(t.id)).at(-1)!.meta).toMatchObject({ previousError: 'boom' });
     });
 
-    it('cancel: aborts the running agent first, then cancels and removes the worktree', async () => {
+    it('cancel: aborts the running agent first, then cancels and hands the shared worktree back', async () => {
       const t = await create('x');
       await claimNext();
       await svc.patchInternal(t.id, { branchName: 'agent/ticket-1', worktreePath: '/tmp/wt/ticket-1' });
@@ -301,18 +376,21 @@ describe('TicketsService (Postgres)', () => {
         order.push('aborted');
         setTimeout(() => handle.finish(), 20);
       });
-      git.removeWorktree.mockImplementation(async () => {
-        order.push('removed');
+      git.releaseSharedWorktree.mockImplementation(async () => {
+        order.push('released');
       });
       const r = await svc.cancel(t.id);
-      expect(order).toEqual(['aborted', 'removed']);
+      expect(order).toEqual(['aborted', 'released']);
       expect(handle.isCancelRequested()).toBe(true);
       expect(r.status).toBe(TicketStatus.Cancelled);
       expect(r.worktreePath).toBeNull();
       expect(r.lockedAt).toBeNull();
-      expect(git.removeWorktree).toHaveBeenCalledWith(expect.objectContaining({ number: t.number }), {
-        deleteBranch: true,
-      });
+      expect(git.releaseSharedWorktree).toHaveBeenCalledWith(
+        '/tmp/wt/ticket-1',
+        expect.objectContaining({ number: t.number }),
+        { deleteBranch: true },
+      );
+      expect(git.removeWorktree).not.toHaveBeenCalled();
       await expect(svc.cancel(t.id)).rejects.toBeInstanceOf(ConflictException);
     });
 
@@ -325,7 +403,17 @@ describe('TicketsService (Postgres)', () => {
       await expect(svc.cancel(d.id)).rejects.toBeInstanceOf(ConflictException);
     });
 
-    it('approve: diff snapshot, merge, remove worktree, review_approved, done', async () => {
+    it('approve in a shared worktree hands it back instead of removing it', async () => {
+      const t = await create('x');
+      await claimNext();
+      await force(t.id, TicketStatus.Review, { branchName: 'agent/ticket-1', worktreePath: '/tmp/wt/main' });
+      await svc.approve(t.id);
+      expect(git.merge).toHaveBeenCalled();
+      expect(git.releaseSharedWorktree).toHaveBeenCalledWith('/tmp/wt/main', expect.anything(), { deleteBranch: true });
+      expect(git.removeWorktree).not.toHaveBeenCalled();
+    });
+
+    it('approve (legacy per-ticket worktree): diff snapshot, merge, remove worktree, review_approved, done', async () => {
       const t = await create('x');
       await force(t.id, TicketStatus.Review, { branchName: 'agent/ticket-1', worktreePath: '/tmp/wt/ticket-1' });
       const r = await svc.approve(t.id);

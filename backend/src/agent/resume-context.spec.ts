@@ -47,6 +47,73 @@ describe('determineResumePrompt', () => {
     expect(r.prompt).not.toContain('a retry note');
   });
 
+  it('answer mode pairs each structured question with its own answer', () => {
+    const questions = [
+      { question: 'Which page?', header: 'Scope', options: [{ label: 'Login' }, { label: 'Signup' }] },
+      { question: 'Which browsers?', options: [{ label: 'Chrome' }, { label: 'Safari' }], multiSelect: true },
+      { question: 'Anything to avoid?', options: [] },
+    ];
+    const events: ResumeEvent[] = [
+      claim,
+      { type: T.AgentQuestion, body: 'md', meta: { questions, reason: 'r' } },
+      status('in_progress', 'needs_context', 'worker'),
+      {
+        type: T.HumanAnswer,
+        body: 'md',
+        meta: {
+          // Out of order on purpose: matched by question text, not only by position.
+          answers: [
+            { question: 'Which browsers?', selected: ['Chrome', 'Safari'], other: null },
+            { question: 'Which page?', selected: ['Login'], other: 'and the reset form' },
+            { question: 'Anything to avoid?', selected: [], other: null },
+          ],
+          note: 'Keep it small.',
+        },
+      },
+      status('needs_context', 'pending', 'human'),
+    ];
+    const r = determineResumePrompt(base, events);
+    expect(r.mode).toBe('answer');
+    expect(r.prompt).toBe(
+      [
+        'The board owner answered your questions:',
+        '',
+        'Question 1: Which page?',
+        'Answer: Login; and the reset form',
+        '',
+        'Question 2: Which browsers?',
+        'Answer: Chrome; Safari',
+        '',
+        'Question 3: Anything to avoid?',
+        'Answer: (no answer)',
+        '',
+        'Note from the board owner: Keep it small.',
+        '',
+        'Continue working on the ticket.',
+      ].join('\n'),
+    );
+  });
+
+  it('answer mode matches structured answers by position and handles old string questions', () => {
+    const events: ResumeEvent[] = [
+      { type: T.AgentQuestion, body: 'md', meta: { questions: ['Q1?', 'Q2?'], reason: 'r' } },
+      {
+        type: T.HumanAnswer,
+        body: 'md',
+        meta: {
+          answers: [
+            { question: 'renamed', selected: [], other: 'yes' },
+            { question: 'renamed too', selected: [], other: 'yes' },
+          ],
+        },
+      },
+      status('needs_context', 'pending', 'human'),
+    ];
+    expect(determineResumePrompt(base, events).prompt).toBe(
+      'The board owner answered your questions:\n\nQuestion 1: Q1?\nAnswer: yes\n\nQuestion 2: Q2?\nAnswer: yes\n\nContinue working on the ticket.',
+    );
+  });
+
   it('reject mode uses the latest review_rejected feedback', () => {
     const events: ResumeEvent[] = [
       claim,

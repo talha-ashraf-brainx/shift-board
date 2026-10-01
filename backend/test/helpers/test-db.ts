@@ -26,7 +26,7 @@ export async function resetTestDatabase(): Promise<void> {
 
 /** Empties projects/tickets/events and restores the seeded settings. */
 export async function truncateAll(ds: DataSource): Promise<void> {
-  await ds.query('TRUNCATE ticket_events, tickets, projects RESTART IDENTITY CASCADE');
+  await ds.query('TRUNCATE ticket_events, tickets, worktrees, projects RESTART IDENTITY CASCADE');
   await ds.query(`DELETE FROM settings`);
   await ds.query(
     `INSERT INTO settings (key, value) VALUES ('globalRules', '""'::jsonb), ('workerEnabled', 'true'::jsonb)`,
@@ -53,7 +53,7 @@ export function createTempGitRepo(): TempRepo {
   return { repoPath, worktreesDir, cleanup: () => rmSync(root, { recursive: true, force: true }) };
 }
 
-/** Inserts a project row directly (no repo validation). Returns its id. */
+/** Inserts a project row directly (no repo validation) with an active "main" worktree. Returns its id. */
 export async function insertTestProject(
   ds: DataSource,
   p: { name?: string; slug?: string; repoPath?: string; baseBranch?: string } = {},
@@ -63,5 +63,23 @@ export async function insertTestProject(
     `INSERT INTO projects (name, slug, repo_path, base_branch) VALUES ($1, $2, $3, $4) RETURNING id`,
     [name, p.slug ?? name, p.repoPath ?? `/tmp/${name}`, p.baseBranch ?? 'main'],
   )) as Array<{ id: string }>;
-  return rows[0]!.id;
+  const id = rows[0]!.id;
+  await insertTestWorktree(ds, id, 'main', { activate: true });
+  return id;
+}
+
+/** Inserts a worktree row for a project (optionally making it active). Returns its id. */
+export async function insertTestWorktree(
+  ds: DataSource,
+  projectId: string,
+  name: string,
+  opts: { activate?: boolean } = {},
+): Promise<string> {
+  const rows = (await ds.query(
+    `INSERT INTO worktrees (project_id, name, slug, path) VALUES ($1, $2, $2, $3) RETURNING id`,
+    [projectId, name, `/tmp/wt/${projectId}/${name}`],
+  )) as Array<{ id: string }>;
+  const id = rows[0]!.id;
+  if (opts.activate) await ds.query(`UPDATE projects SET active_worktree_id = $1 WHERE id = $2`, [id, projectId]);
+  return id;
 }

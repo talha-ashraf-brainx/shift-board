@@ -16,6 +16,8 @@ export interface TicketDto {
   sessionId: string | null;
   branchName: string | null;
   worktreePath: string | null;
+  /** The project worktree the ticket runs in; set when the worker first picks it up. */
+  worktreeId: string | null;
   agentSummary: string | null;
   attemptCount: number;
   lastError: string | null;
@@ -36,9 +38,38 @@ export interface StatusChangedMeta {
   note?: string;
 }
 
+/** One choice the agent offers for a question. */
+export interface QuestionOption {
+  label: string;
+  description?: string;
+}
+
+/** A structured request_context question. No options means a free-text answer. */
+export interface AgentQuestion {
+  question: string;
+  /** Short chip label (at most 12 characters). */
+  header?: string;
+  options: QuestionOption[];
+  multiSelect?: boolean;
+}
+
 export interface AgentQuestionMeta {
-  questions: string[];
+  /** Structured questions; events recorded before structured questions hold plain strings. */
+  questions: (AgentQuestion | string)[];
   reason: string;
+}
+
+/** The human's answer to one question: the chosen option labels and/or a typed answer. */
+export interface QuestionAnswer {
+  question: string;
+  selected: string[];
+  other?: string | null;
+}
+
+export interface HumanAnswerMeta {
+  answers: QuestionAnswer[];
+  /** The optional extra note sent with the answers. */
+  note?: string;
 }
 
 export interface AgentSummaryMeta {
@@ -107,7 +138,10 @@ export interface ListTicketsQuery {
 }
 
 export interface AnswerInput {
-  message: string;
+  /** Free-text answer, or the extra note when `answers` is given. Required without `answers`. */
+  message?: string;
+  /** One answer per question, in question order. */
+  answers?: QuestionAnswer[];
 }
 
 export interface RejectInput {
@@ -142,6 +176,16 @@ export interface AgentStatusDto {
   queueLength: number;
   /** Projects the worker is currently skipping (repo not on its base branch, dirty, or missing). */
   blockedProjects: { projectId: string; name: string; reason: string }[];
+  /** Pending tickets held back because their worktree is busy with another ticket. */
+  waiting: WaitingTicketDto[];
+}
+
+export interface WaitingTicketDto {
+  ticketId: string;
+  ticketNumber: number;
+  worktreeName: string;
+  /** The ticket currently holding the worktree. */
+  heldByNumber: number;
 }
 
 export interface DiffFileDto {
@@ -181,11 +225,31 @@ export interface ProjectDto {
   extraAllowedTools: string[];
   /** <worktreesRoot>/<slug>; read-only. */
   worktreesDir: string;
+  worktrees: WorktreeDto[];
+  /** Where new tickets run. */
+  activeWorktreeId: string | null;
   repoStatus: RepoStatusDto;
   /** Tickets per status (only statuses with at least one ticket are present). */
   ticketCounts: Partial<Record<TicketStatus, number>>;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * A shared git worktree of a project. Tickets run in it one at a time, each on its own
+ * agent/ticket-<n> branch; it stays held while that ticket is in progress, needs context or is in review.
+ */
+export interface WorktreeDto {
+  id: string;
+  name: string;
+  path: string;
+  active: boolean;
+  heldBy: { ticketId: string; number: number; status: TicketStatus } | null;
+  createdAt: string;
+}
+
+export interface CreateWorktreeInput {
+  name: string;
 }
 
 export interface CreateProjectInput {
@@ -217,6 +281,18 @@ export interface RepoInspectDto {
   suggestedName: string;
   /** Id of an existing project with this repoPath, if any. */
   existingProjectId: string | null;
+}
+
+/**
+ * POST /api/attachments (multipart, field `file`) — an uploaded image. Reference it from
+ * markdown as `![filename](url)`; `url` is `/api/attachments/<id>`.
+ */
+export interface AttachmentDto {
+  id: string;
+  url: string;
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
 }
 
 /** GET /api/fs/browse?path=…&showHidden=… — directories only. Defaults to the home folder. */

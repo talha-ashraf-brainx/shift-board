@@ -108,6 +108,32 @@ describe('prompt-builder', () => {
     );
   });
 
+  it('buildAnswerResumePrompt keeps own answers separate even when they match, and adds the note', () => {
+    expect(
+      buildAnswerResumePrompt(
+        [
+          { question: 'Add a test?', answer: 'Yes', own: true },
+          { question: 'Update the docs?', answer: 'Yes', own: true },
+        ],
+        'Ship it today.',
+      ),
+    ).toBe(
+      [
+        'The board owner answered your questions:',
+        '',
+        'Question 1: Add a test?',
+        'Answer: Yes',
+        '',
+        'Question 2: Update the docs?',
+        'Answer: Yes',
+        '',
+        'Note from the board owner: Ship it today.',
+        '',
+        'Continue working on the ticket.',
+      ].join('\n'),
+    );
+  });
+
   it('buildAnswerResumePrompt prints only the answer when no question was recorded', () => {
     expect(buildAnswerResumePrompt([{ question: '', answer: 'Use v2.' }])).toBe(
       'The board owner answered your questions:\n\nAnswer: Use v2.\n\nContinue working on the ticket.',

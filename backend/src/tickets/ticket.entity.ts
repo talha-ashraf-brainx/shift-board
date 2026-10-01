@@ -62,6 +62,13 @@ export class TicketEntity {
   @Column({ name: 'worktree_path', type: 'varchar', nullable: true })
   worktreePath!: string | null;
 
+  /**
+   * The shared worktree the ticket runs in, assigned when the worker first claims it. null with a
+   * worktreePath is a legacy ticket that has its own per-ticket worktree.
+   */
+  @Column({ name: 'worktree_id', type: 'uuid', nullable: true })
+  worktreeId!: string | null;
+
   @Column({ name: 'agent_summary', type: 'text', nullable: true })
   agentSummary!: string | null;
 

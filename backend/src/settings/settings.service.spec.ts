@@ -112,6 +112,7 @@ describe('SettingsService + AgentStatusService (Postgres)', () => {
       ticketNumber: null,
       queueLength: 2,
       blockedProjects: [],
+      waiting: [],
     });
     const handle = moduleRef.get(RunRegistry).register('t-1', 7);
     await settings.update({ workerEnabled: false });

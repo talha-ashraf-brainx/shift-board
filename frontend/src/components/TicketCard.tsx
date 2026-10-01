@@ -1,6 +1,7 @@
 import { clsx } from 'clsx';
 import type { HTMLAttributes, Ref } from 'react';
 import { TicketStatus, ticketTitle, type TicketDto } from '@agent-board/shared';
+import { useAgentStatus } from '../api/queries';
 import { formatCost, needsHuman } from '../lib/meta';
 import { useProjectTag } from '../lib/projectTags';
 import { absoluteTime, relativeTime } from '../lib/time';
@@ -21,6 +22,7 @@ export function TicketCard({ ticket, dragging = false, overlay = false, index = 
   const muted = ticket.status === TicketStatus.Cancelled;
   const projectTag = useProjectTag(ticket.projectId);
   const working = ticket.status === TicketStatus.InProgress;
+  const waiting = useAgentStatus().data?.waiting?.find((w) => w.ticketId === ticket.id);
   return (
     <div
       ref={ref}
@@ -28,7 +30,7 @@ export function TicketCard({ ticket, dragging = false, overlay = false, index = 
       className={clsx(
         'group relative rounded-card border bg-card p-3 text-left',
         'transition-[border-color,opacity] duration-200 ease-out-soft',
-        working ? 'working-edge border-violet-200' : 'border-line',
+        working ? 'border-violet-200' : 'border-line',
         !overlay && 'animate-card-in',
         dragging && !overlay && 'opacity-40',
         overlay && 'animate-lift border-accent/60',
@@ -69,6 +71,11 @@ export function TicketCard({ ticket, dragging = false, overlay = false, index = 
         {ticket.attemptCount > 1 ? <span>Attempt {ticket.attemptCount}</span> : null}
         {ticket.totalCostUsd > 0 ? <span title="Agent cost so far">{formatCost(ticket.totalCostUsd)}</span> : null}
         {working ? <span className="font-medium text-violet-700">Agent working</span> : null}
+        {waiting ? (
+          <span title={`Worktree ${waiting.worktreeName} is busy with #${waiting.heldByNumber}`}>
+            Waiting for {waiting.worktreeName} (#{waiting.heldByNumber})
+          </span>
+        ) : null}
         {ticket.status === TicketStatus.Failed ? <span className="font-medium text-red-700">Failed</span> : null}
         {ticket.status === TicketStatus.Cancelled ? <span>Cancelled</span> : null}
         {attention ? (

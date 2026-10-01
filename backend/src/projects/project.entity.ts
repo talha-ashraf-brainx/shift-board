@@ -25,6 +25,10 @@ export class ProjectEntity {
   @Column({ name: 'extra_allowed_tools', type: 'text', array: true, default: () => "'{}'" })
   extraAllowedTools!: string[];
 
+  /** The worktree new tickets run in. */
+  @Column({ name: 'active_worktree_id', type: 'uuid', nullable: true })
+  activeWorktreeId!: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 

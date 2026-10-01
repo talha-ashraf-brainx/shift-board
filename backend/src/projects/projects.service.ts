@@ -32,6 +32,7 @@ import {
 import { TicketEntity } from '../tickets/ticket.entity';
 import type { CreateProjectDto, UpdateProjectDto } from './dto/project.dto';
 import { ProjectEntity } from './project.entity';
+import { WorktreesService } from './worktrees.service';
 
 /** Internal (backend-only) event: the set of ready/blocked projects changed. */
 export const PROJECTS_READINESS_CHANGED = 'projects.readiness';
@@ -83,6 +84,7 @@ export class ProjectsService implements OnModuleInit {
     private readonly config: AppConfig,
     private readonly emitter: EventEmitter2,
     private readonly workerSignal: WorkerSignal,
+    private readonly worktrees: WorktreesService,
   ) {}
 
   /** Runs before any onApplicationBootstrap hook, so before crash recovery and the worker. */
@@ -108,6 +110,13 @@ export class ProjectsService implements OnModuleInit {
         this.logger.log(`Created the default project "${p.name}" from TARGET_REPO_PATH (${p.repoPath})`);
       } catch (e) {
         this.logger.warn(`Could not create a default project from TARGET_REPO_PATH: ${errorMessage(e)}`);
+      }
+    }
+    for (const p of await this.findAll()) {
+      try {
+        await this.worktrees.ensureDefault(p);
+      } catch (e) {
+        this.logger.warn(`Could not set up the default worktree of "${p.name}": ${errorMessage(e)}`);
       }
     }
     const [first] = await this.repo.find({ order: { createdAt: 'ASC' }, take: 1 });
@@ -138,9 +147,10 @@ export class ProjectsService implements OnModuleInit {
   }
 
   async toDto(p: ProjectEntity, counts?: ProjectDto['ticketCounts']): Promise<ProjectDto> {
-    const [repoStatus, ticketCounts] = await Promise.all([
+    const [repoStatus, ticketCounts, worktrees] = await Promise.all([
       this.repoStatus(p),
       counts ? Promise.resolve(counts) : this.ticketCounts(p.id).then((m) => m.get(p.id) ?? {}),
+      this.worktrees.toDtos(p),
     ]);
     return {
       id: p.id,
@@ -150,6 +160,8 @@ export class ProjectsService implements OnModuleInit {
       rules: p.rules ?? null,
       extraAllowedTools: p.extraAllowedTools ?? [],
       worktreesDir: this.gitFactory.worktreesDirFor(p.slug),
+      worktrees,
+      activeWorktreeId: p.activeWorktreeId ?? null,
       repoStatus,
       ticketCounts,
       createdAt: iso(p.createdAt),
@@ -230,6 +242,7 @@ export class ProjectsService implements OnModuleInit {
           extraAllowedTools: input.extraAllowedTools ?? [],
         }),
       );
+      await this.worktrees.ensureDefault(saved);
       return this.findById(saved.id);
     } catch (e) {
       throw this.uniqueViolation(e) ?? e;
@@ -285,12 +298,37 @@ export class ProjectsService implements OnModuleInit {
         this.logger.warn(`Deleting project "${p.name}": could not clean up ticket #${t.number}: ${errorMessage(e)}`);
       }
     }
+    await this.worktrees.removeAllFor(p);
     await this.repo.delete({ id });
     this.gitFactory.forget(id);
     if (this.readiness.delete(id)) this.emitter.emit(PROJECTS_READINESS_CHANGED);
     this.emitter.emit(SocketEvents.ProjectDeleted, { id });
     this.logger.log(`Deleted project "${p.name}"`);
     return { id };
+  }
+
+  // ---------------------------------------------------------------- worktrees
+
+  async addWorktree(projectId: string, name: string): Promise<ProjectDto> {
+    await this.worktrees.create(await this.findById(projectId), name);
+    return this.emitChanged(projectId);
+  }
+
+  async activateWorktree(projectId: string, worktreeId: string): Promise<ProjectDto> {
+    await this.worktrees.activate(await this.findById(projectId), worktreeId);
+    this.workerSignal.wake();
+    return this.emitChanged(projectId);
+  }
+
+  async removeWorktree(projectId: string, worktreeId: string): Promise<ProjectDto> {
+    await this.worktrees.remove(await this.findById(projectId), worktreeId);
+    return this.emitChanged(projectId);
+  }
+
+  private async emitChanged(projectId: string): Promise<ProjectDto> {
+    const dto = await this.toDto(await this.findById(projectId));
+    this.emitter.emit(SocketEvents.ProjectUpdated, dto);
+    return dto;
   }
 
   // ---------------------------------------------------------------- readiness (worker)

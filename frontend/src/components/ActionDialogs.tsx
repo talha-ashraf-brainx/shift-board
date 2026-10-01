@@ -10,6 +10,7 @@ import {
 import { useProject } from '../hooks/useProjectSelection';
 import { Button } from './Button';
 import { ConfirmDialog } from './ConfirmDialog';
+import { MarkdownField } from './MarkdownField';
 import { Modal } from './Modal';
 
 interface DialogProps {
@@ -93,25 +94,20 @@ export function RejectDialog({ ticket, onClose }: DialogProps) {
         </>
       }
     >
-      <label htmlFor="reject-feedback" className="mb-1 block text-meta font-medium">
-        Feedback<span className="text-red-600"> *</span>
-      </label>
-      <textarea
-        id="reject-feedback"
+      <MarkdownField
+        label="Feedback"
+        required
         value={feedback}
-        onChange={(e) => setFeedback(e.target.value)}
+        onChange={setFeedback}
         onKeyDown={submitOnModEnter(submit)}
         rows={6}
         placeholder="What is wrong with this fix, and what should the agent do instead?"
-        aria-invalid={error ? true : undefined}
-        aria-describedby="reject-feedback-help"
-        aria-required="true"
-        data-autofocus
-        className="field resize-y"
+        error={error}
+        hint="Paste or drop screenshots; the agent sees them. Cmd/Ctrl + Enter to send."
+        // oxlint-disable-next-line jsx-a11y/no-autofocus -- becomes data-autofocus for the modal's focus trap
+        autoFocus
+        ticketId={ticket.id}
       />
-      <p id="reject-feedback-help" className={error ? 'mt-1 text-[12px] text-red-600' : 'mt-1 text-[12px] text-muted'}>
-        {error ?? 'Markdown is supported. Cmd/Ctrl + Enter to send.'}
-      </p>
     </Modal>
   );
 }
@@ -148,18 +144,16 @@ export function RetryDialog({ ticket, onClose }: DialogProps) {
           <span className="break-words whitespace-pre-wrap">{ticket.lastError}</span>
         </div>
       ) : null}
-      <label htmlFor="retry-note" className="mb-1 block text-meta font-medium">
-        Note for the agent <span className="font-normal text-muted">(optional)</span>
-      </label>
-      <textarea
-        id="retry-note"
+      <MarkdownField
+        label="Note for the agent"
         value={note}
-        onChange={(e) => setNote(e.target.value)}
+        onChange={setNote}
         onKeyDown={submitOnModEnter(submit)}
         rows={4}
         placeholder="e.g. The test database was down; it is back now."
-        data-autofocus
-        className="field resize-y"
+        // oxlint-disable-next-line jsx-a11y/no-autofocus -- becomes data-autofocus for the modal's focus trap
+        autoFocus
+        ticketId={ticket.id}
       />
     </Modal>
   );

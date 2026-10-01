@@ -4,7 +4,11 @@ import {
   TicketEventType,
   TicketStatus,
   TransitionActor,
+  formatAnswersBody,
+  normalizeAnswers,
   type DiffDto,
+  type HumanAnswerMeta,
+  type QuestionAnswer,
   type TicketDto,
   type TicketWithEventsDto,
 } from '@agent-board/shared';
@@ -41,6 +45,11 @@ const INTERNAL_PATCH_KEYS = [
   'lockedAt',
 ] as const;
 
+/** A ticket that still has its own per-ticket worktree from before shared worktrees. */
+export function isLegacyWorktree(t: Pick<TicketEntity, 'worktreeId' | 'worktreePath'>): boolean {
+  return !t.worktreeId && Boolean(t.worktreePath);
+}
+
 export const RECOVERY_REASON =
   'Recovered after API restart; the previous run was interrupted. The ticket was requeued.';
 
@@ -72,19 +81,43 @@ export class TicketsService {
    * Atomically claims the next pending ticket (priority, position, createdAt) across all
    * projects, but only from `readyProjectIds`, moving it to in_progress with locked_at = now()
    * and attempt_count + 1. Safe under concurrent callers.
+   *
+   * Worktrees run one ticket at a time: a ticket that already has a worktree waits while another
+   * ticket holds it (in progress, needs context or review); a new ticket takes the project's
+   * active worktree only when nobody holds it or is queued for it, and is assigned to it here.
+   * Legacy tickets with their own worktree are never held back.
    */
   async claimNext(readyProjectIds: string[]): Promise<TicketEntity | null> {
     if (readyProjectIds.length === 0) return null;
     const claimed = await this.dataSource.transaction(async (m) => {
+      // Claims are serialized: "is this worktree free?" must see the previous claim's commit.
+      await m.query(`SELECT pg_advisory_xact_lock(hashtext('shiftboard.claim'))`);
       const rows = (await m.query(
         `WITH claimed AS (
            UPDATE tickets
               SET status = 'in_progress', locked_at = now(), attempt_count = attempt_count + 1, updated_at = now()
+                , worktree_id = CASE
+                    WHEN tickets.worktree_id IS NULL AND tickets.worktree_path IS NULL
+                    THEN (SELECT p.active_worktree_id FROM projects p WHERE p.id = tickets.project_id)
+                    ELSE tickets.worktree_id END
             WHERE id = (
-              SELECT id FROM tickets
-               WHERE status = 'pending' AND locked_at IS NULL AND project_id = ANY($1::uuid[])
-               ORDER BY priority, position, created_at
-               FOR UPDATE SKIP LOCKED
+              SELECT t.id FROM tickets t
+                JOIN projects p ON p.id = t.project_id
+               WHERE t.status = 'pending' AND t.locked_at IS NULL AND t.project_id = ANY($1::uuid[])
+                 AND (
+                   (t.worktree_id IS NULL AND t.worktree_path IS NOT NULL)
+                   OR (t.worktree_id IS NOT NULL AND NOT EXISTS (
+                     SELECT 1 FROM tickets o
+                      WHERE o.worktree_id = t.worktree_id AND o.id <> t.id
+                        AND o.status IN ('in_progress', 'needs_context', 'review')))
+                   OR (t.worktree_id IS NULL AND t.worktree_path IS NULL AND p.active_worktree_id IS NOT NULL
+                     AND NOT EXISTS (
+                       SELECT 1 FROM tickets o
+                        WHERE o.worktree_id = p.active_worktree_id
+                          AND o.status IN ('in_progress', 'needs_context', 'review', 'pending')))
+                 )
+               ORDER BY t.priority, t.position, t.created_at
+               FOR UPDATE OF t SKIP LOCKED
                LIMIT 1)
            RETURNING id
          )
@@ -237,14 +270,25 @@ export class TicketsService {
     return ticket;
   }
 
-  /** needs_context -> pending with a human_answer event. */
-  async answer(id: string, message: string): Promise<TicketEntity> {
+  /**
+   * needs_context -> pending with a human_answer event. With structured `answers` (one per
+   * question) the body is a readable question/answer list plus the optional note in `message`,
+   * and meta.answers keeps the structure; otherwise `message` is the whole free-text answer.
+   */
+  async answer(id: string, message?: string, answers?: QuestionAnswer[]): Promise<TicketEntity> {
+    const note = message?.trim() ?? '';
+    const structured = normalizeAnswers(answers);
+    const hasContent = structured.some((a) => a.selected.length > 0 || a.other);
+    if (!note && !hasContent) throw new BadRequestException('message or answers is required');
     const t = await this.requireStatus(id, TicketStatus.NeedsContext, 'answer');
+    const meta: HumanAnswerMeta | null =
+      structured.length > 0 ? { answers: structured, ...(note ? { note } : {}) } : null;
     await this.events.append({
       ticketId: t.id,
       type: TicketEventType.HumanAnswer,
       author: EventAuthor.Human,
-      body: message,
+      body: meta ? formatAnswersBody(structured, note) : note,
+      meta: meta as Record<string, unknown> | null,
     });
     return this.stateMachine.transition(id, TicketStatus.Pending, {
       actor: TransitionActor.Human,
@@ -307,7 +351,7 @@ export class TicketsService {
 
     if (cancelled.worktreePath || cancelled.branchName) {
       try {
-        await (await this.gitFor(cancelled)).removeWorktree(cancelled, { deleteBranch: true });
+        await this.cleanUpWorktree(cancelled);
         cancelled = await this.patchInternal(id, { worktreePath: null });
       } catch (e) {
         await this.events.append({
@@ -349,7 +393,7 @@ export class TicketsService {
     }
 
     try {
-      await git.removeWorktree(t, { deleteBranch: true });
+      await this.cleanUpWorktree(t);
     } catch (e) {
       await this.events.append({
         ticketId: id,
@@ -382,7 +426,9 @@ export class TicketsService {
     }
     let didReset = false;
     if (resetWorktree && t.worktreePath) {
-      await (await this.gitFor(t)).resetWorktreeToBase(t);
+      const git = await this.gitFor(t);
+      if (isLegacyWorktree(t)) await git.resetWorktreeToBase(t);
+      else await git.resetTicketBranchToBase(t.worktreePath, t);
       didReset = true;
     }
     const updated = await this.patchInternal(id, { sessionId: null });
@@ -418,6 +464,17 @@ export class TicketsService {
     const project = t.projectId ? await this.projects.findOneBy({ id: t.projectId }) : null;
     if (!project) throw new ConflictException(`Ticket #${t.number} does not belong to a project`);
     return this.gitFactory.forProject(project);
+  }
+
+  /**
+   * After approve/cancel: a legacy per-ticket worktree is removed; a shared worktree is handed
+   * back (detached at the base branch). The ticket's branch is deleted either way.
+   */
+  private async cleanUpWorktree(t: TicketEntity): Promise<void> {
+    const git = await this.gitFor(t);
+    if (isLegacyWorktree(t)) await git.removeWorktree(t, { deleteBranch: true });
+    // No path (its worktree was deleted): only the branch is left to remove.
+    else await git.releaseSharedWorktree(t.worktreePath ?? '', t, { deleteBranch: true });
   }
 
   private async requireStatus(id: string, status: TicketStatus, action: string): Promise<TicketEntity> {

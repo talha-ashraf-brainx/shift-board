@@ -4,12 +4,26 @@ import {
   type AnswerInput,
   type CreateTicketInput,
   type ListTicketsQuery,
+  type QuestionAnswer,
   type RejectInput,
   type RetryInput,
   type UpdateTicketInput,
 } from '@agent-board/shared';
-import { ArrayMaxSize, IsArray, IsBoolean, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
-import { Transform } from 'class-transformer';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  ValidateBy,
+  ValidateNested,
+} from 'class-validator';
+import { Transform, Type } from 'class-transformer';
 import { Trim, TrimToNull } from '../../common/transformers';
 
 const MAX_TEXT = 100_000;
@@ -109,12 +123,64 @@ export class ListTicketsQueryDto implements ListTicketsQuery {
   q?: string;
 }
 
-export class AnswerDto implements AnswerInput {
+export class QuestionAnswerDto implements QuestionAnswer {
   @Trim()
   @IsString()
-  @IsNotEmpty({ message: 'message is required' })
   @MaxLength(MAX_TEXT)
-  message!: string;
+  question!: string;
+
+  @RuleList()
+  @IsArray({ message: 'selected must be an array of strings' })
+  @ArrayMaxSize(10)
+  @IsString({ each: true, message: 'selected must be an array of strings' })
+  @MaxLength(MAX_RULE, { each: true })
+  selected!: string[];
+
+  @IsOptional()
+  @TrimToNull()
+  @IsString()
+  @MaxLength(MAX_TEXT)
+  other?: string | null;
+}
+
+/** True when at least one structured answer picks an option or has typed text. */
+export function hasAnswerContent(answers: QuestionAnswer[] | undefined): boolean {
+  return (answers ?? []).some(
+    (a) => (Array.isArray(a?.selected) && a.selected.length > 0) || (typeof a?.other === 'string' && a.other.trim() !== ''),
+  );
+}
+
+/**
+ * `message` is required unless `answers` carries at least one non-empty answer (then it is the
+ * optional extra note). One validator, so a missing message reports a single readable error.
+ */
+const AnswerMessage = () =>
+  ValidateBy({
+    name: 'answerMessage',
+    validator: {
+      validate: (value, args) => {
+        if (value === undefined || value === null || value === '') return hasAnswerContent((args?.object as AnswerDto).answers);
+        return typeof value === 'string' && value.length <= MAX_TEXT;
+      },
+      defaultMessage: (args) => {
+        const value: unknown = args?.value;
+        if (value === undefined || value === null || value === '') return 'message or answers is required';
+        return typeof value === 'string' ? `message must be at most ${MAX_TEXT} characters` : 'message must be a string';
+      },
+    },
+  });
+
+export class AnswerDto implements AnswerInput {
+  @Trim()
+  @AnswerMessage()
+  message?: string;
+
+  @IsOptional()
+  @IsArray({ message: 'answers must be an array' })
+  @ArrayMaxSize(5)
+  @ValidateNested({ each: true })
+  @Type(() => QuestionAnswerDto)
+  answers?: QuestionAnswerDto[];
 }
 
 export class RejectDto implements RejectInput {
