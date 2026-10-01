@@ -26,7 +26,7 @@ export function TicketCard({ ticket, dragging = false, overlay = false, index = 
       ref={ref}
       style={overlay ? style : { animationDelay: `${Math.min(index, 8) * 35}ms`, ...style }}
       className={clsx(
-        'group relative rounded-card border bg-surface p-3 text-left',
+        'group relative rounded-card border bg-card p-3 text-left',
         'transition-[border-color,opacity] duration-200 ease-out-soft',
         working ? 'working-edge border-violet-200' : 'border-line',
         !overlay && 'animate-card-in',
@@ -52,7 +52,7 @@ export function TicketCard({ ticket, dragging = false, overlay = false, index = 
           <span className="shrink-0 text-[12px] font-medium text-muted tabular-nums">#{ticket.number}</span>
           {projectTag ? (
             <span
-              className="truncate rounded-[5px] bg-stone-100 px-1.5 text-[11px] leading-[18px] font-medium text-stone-600"
+              className="truncate rounded-[5px] bg-stone-100 px-1.5 dark:bg-stone-300/60 text-[11px] leading-[18px] font-medium text-stone-600"
               title={`Project: ${projectTag}`}
             >
               {projectTag}

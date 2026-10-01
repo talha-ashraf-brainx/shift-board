@@ -28,6 +28,8 @@ interface BoardProps {
   onDialog: (kind: TicketDialog, ticket: TicketDto) => void;
 }
 
+const COLLAPSIBLE: ReadonlySet<ColumnKey> = new Set(['done', 'closed']);
+
 type CardData = { type: 'card'; columnKey: ColumnKey; ticket: TicketDto };
 type ColumnData = { type: 'column'; columnKey: ColumnKey };
 type DropData = CardData | ColumnData;
@@ -72,7 +74,15 @@ const collisionDetection: CollisionDetection = (args) => {
 
 export function Board({ tickets, loading, onOpen, onDialog }: BoardProps) {
   const [active, setActive] = useState<TicketDto | null>(null);
-  const [closedCollapsed, setClosedCollapsed] = useState(true);
+  // Columns that can fold into a narrow strip; Failed / Cancelled starts folded.
+  const [collapsed, setCollapsed] = useState<ReadonlySet<ColumnKey>>(() => new Set(['closed']));
+  const toggleCollapsed = (key: ColumnKey) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   const reorder = useReorderTickets();
 
   const sensors = useSensors(
@@ -170,7 +180,7 @@ export function Board({ tickets, loading, onOpen, onDialog }: BoardProps) {
       onDragEnd={onDragEnd}
       onDragCancel={() => setActive(null)}
     >
-      <div className="flex h-full min-h-0 gap-3 overflow-x-auto px-4 pt-3 pb-4">
+      <div className="flex h-full min-h-0 divide-x divide-line overflow-x-auto bg-board [&>*:last-child]:border-r [&>*:last-child]:border-line">
         {COLUMNS.map((column) => (
           <Column
             key={column.key}
@@ -178,8 +188,8 @@ export function Board({ tickets, loading, onOpen, onDialog }: BoardProps) {
             tickets={grouped.get(column.key) ?? []}
             loading={loading}
             dropState={dropStateFor(column)}
-            collapsed={column.key === 'closed' ? closedCollapsed : false}
-            onToggleCollapsed={column.key === 'closed' ? () => setClosedCollapsed((c) => !c) : undefined}
+            collapsed={collapsed.has(column.key)}
+            onToggleCollapsed={COLLAPSIBLE.has(column.key) ? () => toggleCollapsed(column.key) : undefined}
             onOpen={onOpen}
             canDrag={canDrag}
           />

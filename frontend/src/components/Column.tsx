@@ -44,9 +44,9 @@ export function Column({
         ref={setNodeRef}
         aria-labelledby={headingId}
         className={clsx(
-          'flex h-full w-11 shrink-0 flex-col items-center rounded-card border transition-colors',
-          dropState === 'valid' ? 'border-dashed border-accent bg-accent-soft' : 'border-line bg-stone-100/60',
-          overValid && 'ring-2 ring-accent/40',
+          'flex h-full w-11 shrink-0 flex-col items-center transition-colors',
+          dropState === 'valid' && 'bg-accent-soft',
+          overValid && 'ring-2 ring-accent/40 ring-inset',
           dropState === 'invalid' && 'opacity-40',
         )}
       >
@@ -55,13 +55,13 @@ export function Column({
           onClick={onToggleCollapsed}
           aria-expanded="false"
           aria-label={`Expand ${column.title} column (${tickets.length})`}
-          className="flex h-full w-full flex-col items-center gap-2 rounded-card py-3 text-muted hover:text-ink"
+          className="flex h-full w-full flex-col items-center gap-2 py-3 text-muted hover:text-ink"
         >
           <Icon name="chevron-right" />
           <span aria-hidden="true" className={clsx('size-2 rounded-full', column.dot)} />
           <span className="text-meta font-medium tabular-nums">{tickets.length}</span>
           <span id={headingId} className="mt-1 text-meta font-medium whitespace-nowrap [writing-mode:vertical-rl]">
-            {dropState === 'valid' ? 'Drop to cancel' : column.title}
+            {dropState === 'valid' ? (column.key === 'closed' ? 'Drop to cancel' : 'Drop here') : column.title}
           </span>
         </button>
       </section>
@@ -73,19 +73,19 @@ export function Column({
       ref={setNodeRef}
       aria-labelledby={headingId}
       className={clsx(
-        'flex h-full w-[17.5rem] shrink-0 flex-col rounded-card border transition-[background-color,border-color,opacity]',
-        dropState === 'valid' ? 'border-dashed border-accent/70 bg-accent-soft/60' : 'border-transparent bg-stone-100/50',
-        overValid && 'border-solid border-accent bg-accent-soft ring-2 ring-accent/25',
+        'flex h-full w-[23.5rem] shrink-0 flex-col transition-[background-color,opacity]',
+        dropState === 'valid' && 'bg-accent-soft/60',
+        overValid && 'bg-accent-soft ring-2 ring-accent/30 ring-inset',
         dropState === 'invalid' && 'opacity-45',
         overInvalid && 'cursor-not-allowed',
       )}
     >
-      <div className="flex items-center gap-2 px-3 pt-2.5 pb-2">
+      <div className="flex items-center gap-2 px-3 pt-3 pb-2">
         <span aria-hidden="true" className={clsx('size-2 rounded-full', column.dot)} />
         <h2 id={headingId} className="text-meta font-semibold text-ink">
           {column.title}
         </h2>
-        <span className="rounded-full bg-stone-200/70 px-1.5 text-[12px] leading-[18px] font-medium text-muted tabular-nums" aria-label={`${tickets.length} tickets`}>
+        <span className="rounded-full bg-surface px-1.5 text-[12px] leading-[18px] font-medium text-muted tabular-nums" aria-label={`${tickets.length} tickets`}>
           {loading ? '–' : tickets.length}
         </span>
         {dropState === 'valid' ? (
@@ -99,7 +99,7 @@ export function Column({
             onClick={onToggleCollapsed}
             aria-expanded="true"
             aria-label={`Collapse ${column.title} column`}
-            className="ml-auto rounded-control p-0.5 text-muted hover:bg-stone-200 hover:text-ink"
+            className="ml-auto rounded-control p-0.5 text-muted hover:bg-stone-300/60 hover:text-ink"
           >
             <Icon name="chevron-down" />
           </button>
@@ -122,7 +122,7 @@ export function Column({
               ))}
             </ul>
             {tickets.length === 0 ? (
-              <div className="rounded-card border border-dashed border-line px-3 py-6 text-center text-meta text-muted">
+              <div className="rounded-card border border-dashed border-line-strong px-3 py-6 text-center text-meta text-muted">
                 {column.empty}
               </div>
             ) : null}
