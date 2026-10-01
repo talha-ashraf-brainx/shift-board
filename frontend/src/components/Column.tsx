@@ -44,8 +44,8 @@ export function Column({
         ref={setNodeRef}
         aria-labelledby={headingId}
         className={clsx(
-          'flex h-full w-12 shrink-0 flex-col items-center rounded-lane border transition-[background-color,border-color,opacity] duration-200',
-          dropState === 'valid' ? 'border-dashed border-accent bg-accent-soft' : 'border-transparent bg-lane hover:border-line',
+          'flex h-full w-11 shrink-0 flex-col items-center rounded-card border transition-colors',
+          dropState === 'valid' ? 'border-dashed border-accent bg-accent-soft' : 'border-line bg-stone-100/60',
           overValid && 'ring-2 ring-accent/40',
           dropState === 'invalid' && 'opacity-40',
         )}
@@ -55,12 +55,12 @@ export function Column({
           onClick={onToggleCollapsed}
           aria-expanded="false"
           aria-label={`Expand ${column.title} column (${tickets.length})`}
-          className="flex h-full w-full flex-col items-center gap-2 rounded-lane py-3.5 text-muted transition-colors hover:text-ink"
+          className="flex h-full w-full flex-col items-center gap-2 rounded-card py-3 text-muted hover:text-ink"
         >
           <Icon name="chevron-right" />
           <span aria-hidden="true" className={clsx('size-2 rounded-full', column.dot)} />
           <span className="text-meta font-medium tabular-nums">{tickets.length}</span>
-          <span id={headingId} className="mt-1 font-display text-[14px] font-semibold whitespace-nowrap [writing-mode:vertical-rl]">
+          <span id={headingId} className="mt-1 text-meta font-medium whitespace-nowrap [writing-mode:vertical-rl]">
             {dropState === 'valid' ? 'Drop to cancel' : column.title}
           </span>
         </button>
@@ -73,23 +73,19 @@ export function Column({
       ref={setNodeRef}
       aria-labelledby={headingId}
       className={clsx(
-        'flex h-full w-[18rem] shrink-0 animate-rise-in flex-col rounded-lane border',
-        'transition-[background-color,border-color,opacity,box-shadow] duration-200 ease-out-soft',
-        dropState === 'valid' ? 'border-dashed border-accent/60 bg-accent-soft/50' : 'border-transparent bg-lane',
-        overValid && 'border-solid border-accent bg-accent-soft shadow-[0_0_0_4px_color-mix(in_oklab,var(--color-accent)_14%,transparent)]',
-        dropState === 'invalid' && 'opacity-40',
+        'flex h-full w-[17.5rem] shrink-0 flex-col rounded-card border transition-[background-color,border-color,opacity]',
+        dropState === 'valid' ? 'border-dashed border-accent/70 bg-accent-soft/60' : 'border-transparent bg-stone-100/50',
+        overValid && 'border-solid border-accent bg-accent-soft ring-2 ring-accent/25',
+        dropState === 'invalid' && 'opacity-45',
         overInvalid && 'cursor-not-allowed',
       )}
     >
-      <div className="px-3.5 pt-3 pb-2.5">
-        {/* A short status-colored rail above the title: the lane's identity at a glance. */}
-        <span aria-hidden="true" className={clsx('block h-[3px] w-6 rounded-full', column.dot)} />
-      </div>
-      <div className="flex items-center gap-2 px-3.5 pb-2.5">
-        <h2 id={headingId} className="font-display text-[15px] leading-none font-semibold text-ink">
+      <div className="flex items-center gap-2 px-3 pt-2.5 pb-2">
+        <span aria-hidden="true" className={clsx('size-2 rounded-full', column.dot)} />
+        <h2 id={headingId} className="text-meta font-semibold text-ink">
           {column.title}
         </h2>
-        <span className="text-[13px] leading-none font-medium text-muted tabular-nums" aria-label={`${tickets.length} tickets`}>
+        <span className="rounded-full bg-stone-200/70 px-1.5 text-[12px] leading-[18px] font-medium text-muted tabular-nums" aria-label={`${tickets.length} tickets`}>
           {loading ? '–' : tickets.length}
         </span>
         {dropState === 'valid' ? (
@@ -103,13 +99,13 @@ export function Column({
             onClick={onToggleCollapsed}
             aria-expanded="true"
             aria-label={`Collapse ${column.title} column`}
-            className="-my-1 ml-auto rounded-control p-1 text-muted transition-colors hover:bg-stone-200 hover:text-ink"
+            className="ml-auto rounded-control p-0.5 text-muted hover:bg-stone-200 hover:text-ink"
           >
             <Icon name="chevron-down" />
           </button>
         ) : null}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2 [scrollbar-gutter:stable]">
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
         {loading ? (
           <div className="flex flex-col gap-2">
             <CardSkeleton />
@@ -126,7 +122,7 @@ export function Column({
               ))}
             </ul>
             {tickets.length === 0 ? (
-              <div className="animate-fade-in rounded-card border border-dashed border-line-strong/70 px-4 py-7 text-center text-meta text-pretty text-muted">
+              <div className="rounded-card border border-dashed border-line px-3 py-6 text-center text-meta text-muted">
                 {column.empty}
               </div>
             ) : null}

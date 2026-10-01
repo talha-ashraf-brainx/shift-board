@@ -26,13 +26,13 @@ export function TicketCard({ ticket, dragging = false, overlay = false, index = 
       ref={ref}
       style={overlay ? style : { animationDelay: `${Math.min(index, 8) * 35}ms`, ...style }}
       className={clsx(
-        'group relative rounded-card border bg-surface p-3 text-left shadow-card',
-        'transition-[border-color,box-shadow,opacity] duration-200 ease-out-soft',
+        'group relative rounded-card border bg-surface p-3 text-left',
+        'transition-[border-color,opacity] duration-200 ease-out-soft',
         working ? 'working-edge border-violet-200' : 'border-line',
         !overlay && 'animate-card-in',
-        dragging && !overlay && 'border-dashed border-line-strong bg-transparent opacity-50 shadow-none',
+        dragging && !overlay && 'opacity-40',
         overlay && 'animate-lift border-accent/60',
-        !dragging && !overlay && 'hover:border-line-strong hover:shadow-card-hover',
+        !dragging && !overlay && 'hover:border-line-strong',
         muted && 'opacity-65',
         className,
       )}

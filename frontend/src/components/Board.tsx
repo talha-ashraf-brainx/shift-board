@@ -170,7 +170,7 @@ export function Board({ tickets, loading, onOpen, onDialog }: BoardProps) {
       onDragEnd={onDragEnd}
       onDragCancel={() => setActive(null)}
     >
-      <div className="flex h-full min-h-0 gap-3 overflow-x-auto px-4 pt-4 pb-4 sm:px-5">
+      <div className="flex h-full min-h-0 gap-3 overflow-x-auto px-4 pt-3 pb-4">
         {COLUMNS.map((column) => (
           <Column
             key={column.key}
