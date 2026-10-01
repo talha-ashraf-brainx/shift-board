@@ -58,6 +58,8 @@ export interface AgentRunParams {
   systemAppend: string;
   /** The project's extraAllowedTools. */
   extraAllowedTools?: readonly string[];
+  /** Spending limit for this query() call in USD (what is left of the ticket's budget). */
+  maxBudgetUsd?: number;
   runState: RunState;
   handle: RunHandle;
   onSessionId(sessionId: string): void | Promise<void>;
@@ -146,6 +148,7 @@ export class AgentRunner {
     if (this.processes) options.spawnClaudeCodeProcess = this.processes.spawnFor(ticket.number, onStderr);
     if (ticket.sessionId) options.resume = ticket.sessionId;
     if (this.config.agentModel) options.model = this.config.agentModel;
+    if (params.maxBudgetUsd !== undefined) options.maxBudgetUsd = params.maxBudgetUsd;
 
     const throttler = new LogThrottler((body, meta) => params.onLog(body, meta));
     const outcome: AgentRunOutcome = { aborted: false };

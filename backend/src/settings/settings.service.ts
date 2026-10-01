@@ -10,12 +10,14 @@ import { SettingEntity } from './setting.entity';
 export interface BoardSettings {
   globalRules: string;
   workerEnabled: boolean;
+  /** Incoming-webhook URL for "ticket needs you" notifications; null = off. */
+  notifyWebhookUrl: string | null;
 }
 
 /** Internal (backend-only) event emitted after settings change. */
 export const SETTINGS_CHANGED = 'settings.changed';
 
-const DEFAULTS: BoardSettings = { globalRules: '', workerEnabled: true };
+const DEFAULTS: BoardSettings = { globalRules: '', workerEnabled: true, notifyWebhookUrl: null };
 
 @Injectable()
 export class SettingsService {
@@ -35,9 +37,12 @@ export class SettingsService {
     const map = new Map(rows.map((r) => [r.key, r.value]));
     const globalRules = map.get('globalRules');
     const workerEnabled = map.get('workerEnabled');
+    const notifyWebhookUrl = map.get('notifyWebhookUrl');
     this.cache = {
       globalRules: typeof globalRules === 'string' ? globalRules : DEFAULTS.globalRules,
       workerEnabled: typeof workerEnabled === 'boolean' ? workerEnabled : DEFAULTS.workerEnabled,
+      // Stored as "" when cleared (the jsonb column is NOT NULL); no row = never set.
+      notifyWebhookUrl: typeof notifyWebhookUrl === 'string' && notifyWebhookUrl ? notifyWebhookUrl : null,
     };
     return { ...this.cache };
   }
@@ -55,6 +60,8 @@ export class SettingsService {
     const next: BoardSettings = {
       globalRules: input.globalRules ?? current.globalRules,
       workerEnabled: input.workerEnabled ?? current.workerEnabled,
+      notifyWebhookUrl:
+        input.notifyWebhookUrl === undefined ? current.notifyWebhookUrl : input.notifyWebhookUrl?.trim() || null,
     };
     await this.persist(next);
     this.emitter.emit(SETTINGS_CHANGED);
@@ -66,6 +73,7 @@ export class SettingsService {
     await this.repo.save([
       { key: 'globalRules', value: s.globalRules },
       { key: 'workerEnabled', value: s.workerEnabled },
+      { key: 'notifyWebhookUrl', value: s.notifyWebhookUrl ?? '' },
     ]);
     this.cache = { ...s };
   }

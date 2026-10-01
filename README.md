@@ -2,7 +2,7 @@
 
 A ticket board where you file issues against a git repository and an AI agent, built on the [Claude Agent SDK](https://docs.claude.com/en/api/agent-sdk/typescript), picks them up. For each ticket, the agent either fixes it and hands it back for review, or asks for more context. You answer its questions, or you approve the fix (which merges it) or reject it with feedback, and the agent resumes the same session. The board updates live.
 
-This is a proof of concept: one user, no auth, one worker running one ticket at a time. Tickets belong to **projects** (git repos you add from the UI), and the worker serves every project from one queue.
+This is a proof of concept: one user, no auth, one worker running up to `AGENT_CONCURRENCY` tickets at once, one per free worktree. Tickets belong to **projects** (git repos you add from the UI), and the worker serves every project from one queue.
 
 ```
 shared/     @agent-board/shared   enums, DTO types, socket event names, transition table
@@ -52,9 +52,16 @@ Projects (repo path, base branch, project rules, extra allowed tools) are manage
 | `WORKTREES_DIR` | `/Users/me/.agent-board/worktrees` | Yes. Root for all worktrees (`<root>/<project-slug>/worktrees/<name>`); must be outside every project repo; created if missing |
 | `AGENT_MODEL` | (blank = SDK default) | No |
 | `AGENT_MAX_TURNS` | `60` | No |
+| `AGENT_CONCURRENCY` | `3` | No. How many tickets run at the same time (1–16); each also needs a free worktree |
+| `AGENT_MAX_BUDGET_USD` | unset | No. Default spending limit per ticket in USD; projects and tickets can override it |
+| `CHECK_TIMEOUT_MS` | `600000` | No. Time limit for a project's setup and check commands |
+| `AGENT_CHECK_RETRIES` | `2` | No. How many times failing checks are sent back to the agent before the ticket goes to Review anyway |
 | `AGENT_EXTRA_ALLOWED_TOOLS` | `Bash(npm test:*),Bash(node:*)` | No. Comma-separated; applies to every project (each project can add its own) |
 | `POLL_INTERVAL_MS` | `3000` | No |
 | `API_PORT` / `WEB_ORIGIN` | `3000` / `http://localhost:5173` | No |
+| `PUBLIC_URL` | `http://localhost:5173` | No. Board URL used for the ticket link in webhook notifications |
+| `API_HOST` | `127.0.0.1` | No. Interface the API binds to; the default is reachable from this machine only. If you change it, also set `BOARD_TOKEN` (a warning is logged otherwise). The Vite dev proxy targets `VITE_API_TARGET`, default `http://127.0.0.1:3000` |
+| `BOARD_TOKEN` | (blank = no auth) | No. Shared secret, at least 16 characters, never logged. When set, the API and socket require it (see Security notes) |
 | `S3_ENDPOINT` | `http://localhost:9000` | No. S3-compatible store for image attachments (MinIO from `docker-compose.yml`) |
 | `S3_REGION` / `S3_BUCKET` | `us-east-1` / `shiftboard-attachments` | No. The bucket is created at startup if missing |
 | `S3_ACCESS_KEY` / `S3_SECRET_KEY` | `minioadmin` / `minioadmin` | No. Defaults match the compose MinIO; the secret is never logged |
@@ -139,6 +146,14 @@ The SDK `session_id` is saved on the ticket from the first run, and every later 
 - **Pause** (the header switch) stops new claims; it never interrupts the current run.
 - **Repo check per project.** A project whose main checkout isn't on its base branch or has uncommitted changes is skipped (see Queue) until it's clean again; the worker itself is never paused for it.
 
+### Notifications
+
+You are needed when a ticket enters **Needs context**, **Review** or **Failed**. Settings → Notifications:
+
+- **Tab title badge**: always on. `(3) Shiftboard` = tickets currently in those three statuses, across all projects.
+- **Desktop notifications** (per browser, stored in localStorage): the toggle asks for the browser's permission. A notification is shown only when the tab is hidden or unfocused; clicking it focuses the board and opens the ticket. If the browser blocked it, allow Notifications for the site (icon left of the address bar) and reload.
+- **Webhook** (server side, works with the tab closed): paste a Slack or Discord incoming-webhook URL (any http(s) URL that accepts a JSON POST works). The API posts `{ "text": "...", "content": "..." }`, e.g. `Shiftboard: #12 "Fix login" is ready for review (project shop)` plus a link to `${PUBLIC_URL}/tickets/<id>`. Requests time out after 5 s; failures are logged as warnings and never affect the ticket. **Send test notification** posts a test message (`POST /api/settings/notify-test`).
+
 ## Security notes
 
 - **Git calls.** Every git call uses `execFile('git', [...args])`, never a shell string. Ticket text never reaches a shell; it only goes to the model.
@@ -147,7 +162,14 @@ The SDK `session_id` is saved on the ticket from the first run, and every later 
   - Blocked: `WebFetch`, `WebSearch`, `git push`, `git checkout`.
 - **API key.** It is never logged.
 - **Images.** Uploads (`POST /api/attachments`, field `file`) accept PNG, JPEG, GIF and WebP up to 10 MB, checked by magic bytes, not the declared type. They are served with `X-Content-Type-Options: nosniff`. Markdown references to `/api/attachments/<id>` in the ticket description, answers and reject feedback are sent to the agent as image input (at most 10 per prompt, at most 5 MB each).
-- **Auth.** There is none (this is a POC). Don't expose the API beyond localhost.
+- **Network exposure.** The API binds to `127.0.0.1` by default (`API_HOST`), so other machines on your network can't reach it. Anyone who can reach it can make the agent edit and merge code in your repos, so think twice before changing that.
+- **Auth (optional).** Set `BOARD_TOKEN` (at least 16 characters, e.g. `openssl rand -hex 24`) to require a shared secret:
+  - Every HTTP request (all of `/api`, including `GET /api/attachments/<id>` images) and the Socket.IO handshake must carry it, either as `Authorization: Bearer <token>` or as the `shiftboard_token` cookie. Otherwise the API answers `401 { statusCode, message }` and the socket is refused.
+  - The UI shows a sign-in screen and calls `POST /api/auth/login { token }`, which sets the cookie (HttpOnly, SameSite=Strict, Path=/, one year; no `Secure` flag because the board runs on `http://localhost`). The cookie is what lets `<img>` tags load attachments. **Settings → Sign out** calls `POST /api/auth/logout`.
+  - `GET /api/auth/status` (`{ required, authenticated }`), login and logout work without the token. Failed logins are limited to 10 per minute per client IP (then `429`).
+  - Tokens are compared as SHA-256 digests with `timingSafeEqual`. Unset `BOARD_TOKEN` means no auth (the old behaviour).
+  - Scripts can use the header: `curl -H "Authorization: Bearer $BOARD_TOKEN" http://127.0.0.1:3000/api/tickets`.
+  - Limits: there are no per-user accounts, and the token can't be rotated without restarting the API. Behind the Vite dev proxy all clients share one IP for the login rate limit.
 
 ## Tests
 
@@ -158,6 +180,7 @@ The SDK `session_id` is saved on the ticket from the first run, and every later 
   - the git service, against temporary repos
   - prompt builders, resume-mode detection, board tools, log throttling, worker outcome resolution, and orphan-process cleanup
   - config validation
+  - auth: token checks, the HTTP middleware, login/logout cookies, the login rate limit, and socket handshakes
   - image attachments: magic-byte detection, markdown references, S3 storage (mocked), and images in agent prompts
   - HTTP and Socket.IO end-to-end tests
 

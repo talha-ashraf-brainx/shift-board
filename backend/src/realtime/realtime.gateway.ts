@@ -6,19 +6,33 @@ import {
   WebSocketServer,
   type OnGatewayConnection,
   type OnGatewayDisconnect,
+  type OnGatewayInit,
 } from '@nestjs/websockets';
 import type { Server, Socket } from 'socket.io';
+import { AuthService } from '../auth/auth.service';
 
 /** Read at decoration time; main.ts loads the root .env before importing the app module. */
 const WEB_ORIGIN = process.env.WEB_ORIGIN?.trim() || 'http://localhost:5173';
 
 /** Re-broadcasts the internal events to every connected browser (default path /socket.io). */
 @WebSocketGateway({ cors: { origin: WEB_ORIGIN } })
-export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(RealtimeGateway.name);
 
   @WebSocketServer()
   server!: Server;
+
+  constructor(private readonly auth: AuthService) {}
+
+  /** With BOARD_TOKEN set, the handshake must carry the cookie, a Bearer header or `auth.token`. */
+  afterInit(server: Server): void {
+    server.use((socket, next) => {
+      const { headers, auth } = socket.handshake;
+      const token = (auth as { token?: unknown } | undefined)?.token;
+      if (this.auth.isAuthorized({ authorization: headers.authorization, cookie: headers.cookie, token })) return next();
+      next(new Error('Unauthorized'));
+    });
+  }
 
   handleConnection(client: Socket): void {
     this.logger.debug(`Client connected: ${client.id}`);

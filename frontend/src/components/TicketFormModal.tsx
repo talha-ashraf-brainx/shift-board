@@ -1,7 +1,7 @@
 import { useState, type FormEvent, type KeyboardEvent } from 'react';
 import { ALL_PRIORITIES, TicketPriority, TicketStatus, type TicketDto, type UpdateTicketInput } from '@agent-board/shared';
 import { useCreateTicket, useProjects, useUpdateTicket } from '../api/queries';
-import { PRIORITY_LABEL } from '../lib/meta';
+import { parseBudget, PRIORITY_LABEL } from '../lib/meta';
 import { Button } from './Button';
 import { Icon } from './Icon';
 import { MarkdownField } from './MarkdownField';
@@ -50,6 +50,8 @@ export function TicketFormModal({ ticket, onClose, onCreated, projectId }: Ticke
   const [priority, setPriority] = useState<TicketPriority>(ticket?.priority ?? TicketPriority.Medium);
   const [description, setDescription] = useState(ticket?.description ?? '');
   const [rules, setRules] = useState<string[]>(ticket?.rules ?? []);
+  const [budget, setBudget] = useState(ticket?.maxBudgetUsd != null ? String(ticket.maxBudgetUsd) : '');
+  const parsedBudget = parseBudget(budget);
   const [submitted, setSubmitted] = useState(false);
 
   const create = useCreateTicket();
@@ -62,7 +64,8 @@ export function TicketFormModal({ ticket, onClose, onCreated, projectId }: Ticke
     if (busy || locked) return;
     setSubmitted(true);
     const found = validate(title, description);
-    if (found.title || found.description) return;
+    if (found.title || found.description || parsedBudget === undefined) return;
+    const maxBudgetUsd = parsedBudget ?? null;
 
     if (ticket) {
       const input: UpdateTicketInput = {};
@@ -70,6 +73,7 @@ export function TicketFormModal({ ticket, onClose, onCreated, projectId }: Ticke
       if (priority !== ticket.priority) input.priority = priority;
       if (description !== ticket.description) input.description = description;
       if (!sameList(cleanRules(rules), ticket.rules)) input.rules = cleanRules(rules);
+      if (maxBudgetUsd !== ticket.maxBudgetUsd) input.maxBudgetUsd = maxBudgetUsd;
       if (Object.keys(input).length === 0) {
         onClose();
         return;
@@ -78,7 +82,7 @@ export function TicketFormModal({ ticket, onClose, onCreated, projectId }: Ticke
     } else {
       if (!projectId) return;
       create.mutate(
-        { projectId, title: title.trim(), priority, description, rules: cleanRules(rules) },
+        { projectId, title: title.trim(), priority, description, rules: cleanRules(rules), maxBudgetUsd },
         {
           onSuccess: (created) => {
             onClose();
@@ -198,6 +202,35 @@ export function TicketFormModal({ ticket, onClose, onCreated, projectId }: Ticke
             hint="Each rule is added to the global and project rules. Enter adds another."
             disabled={locked}
           />
+          <div>
+            <label htmlFor="ticket-budget" className="mb-1 block text-meta font-medium">
+              Spending limit <span className="font-normal text-muted">(optional)</span>
+            </label>
+            <div className="flex items-center gap-2">
+              <span className="text-muted">$</span>
+              <input
+                id="ticket-budget"
+                value={budget}
+                onChange={(e) => setBudget(e.target.value)}
+                inputMode="decimal"
+                placeholder={project?.maxBudgetUsd != null ? String(project.maxBudgetUsd) : 'No limit'}
+                aria-invalid={submitted && parsedBudget === undefined ? true : undefined}
+                aria-describedby="ticket-budget-help"
+                className="field w-32 tabular-nums"
+              />
+            </div>
+            <p
+              id="ticket-budget-help"
+              className={submitted && parsedBudget === undefined ? 'mt-1 text-[12px] text-red-600' : 'mt-1 text-[12px] text-muted'}
+              role={submitted && parsedBudget === undefined ? 'alert' : undefined}
+            >
+              {submitted && parsedBudget === undefined
+                ? 'Enter a dollar amount such as 5 or 2.50, or leave it empty.'
+                : `The agent stops when this ticket has cost this much in total.${
+                    project?.maxBudgetUsd != null ? ` Empty uses the project limit ($${project.maxBudgetUsd}).` : ''
+                  }`}
+            </p>
+          </div>
         </fieldset>
       </form>
     </Modal>

@@ -6,6 +6,7 @@ import {
   normalizeAnswers,
   normalizeQuestions,
   type AgentLogMeta,
+  type CommandLogMeta,
   type AgentQuestionMeta,
   type AgentSummaryMeta,
   type HumanAnswerMeta,
@@ -55,6 +56,7 @@ function Timestamp({ iso }: { iso: string }) {
 
 function LogLine({ event }: { event: TicketEventDto }) {
   const m = meta<AgentLogMeta>(event);
+  if (m.kind === 'setup' || m.kind === 'checks') return <CommandLine event={event} m={m as CommandLogMeta} />;
   return (
     <li className="flex items-start gap-2 py-0.5 pl-8 font-mono text-[12px] leading-5 text-muted">
       <span className="shrink-0 text-stone-400" aria-hidden="true">
@@ -66,6 +68,31 @@ function LogLine({ event }: { event: TicketEventDto }) {
         {m.count && m.count > 1 ? <span className="text-stone-400"> (+{m.count - 1})</span> : null}
       </span>
       <Timestamp iso={event.createdAt} />
+    </li>
+  );
+}
+
+/** A setup/check command result: pass/fail, with the output one click away. */
+function CommandLine({ event, m }: { event: TicketEventDto; m: CommandLogMeta }) {
+  return (
+    <li className="py-0.5 pl-8 font-mono text-[12px] leading-5">
+      <div className="flex items-start gap-2">
+        <span aria-hidden="true" className={m.passed ? 'shrink-0 text-green-600' : 'shrink-0 text-red-600'}>
+          {m.passed ? '✓' : '✗'}
+        </span>
+        <span className={clsx('min-w-0 flex-1 break-words', m.passed ? 'text-muted' : 'text-red-700')}>
+          {event.body} <code className="opacity-70">{m.command}</code>
+        </span>
+        <Timestamp iso={event.createdAt} />
+      </div>
+      {m.output ? (
+        <details className="ml-4">
+          <summary className="cursor-pointer text-muted hover:text-ink">Output</summary>
+          <pre className="mt-1 max-h-64 overflow-auto rounded-control border border-line bg-page px-2.5 py-2 whitespace-pre-wrap text-ink">
+            {m.output}
+          </pre>
+        </details>
+      ) : null}
     </li>
   );
 }

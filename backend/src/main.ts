@@ -23,8 +23,11 @@ async function bootstrap(): Promise<void> {
 
   const app = await NestFactory.create(AppModule);
   configureApp(app, config);
-  await app.listen(config.apiPort);
-  new Logger('Bootstrap').log(`Shiftboard API listening on http://localhost:${config.apiPort}/api`);
+  await app.listen(config.apiPort, config.apiHost);
+  const host = config.apiHost.includes(':') ? `[${config.apiHost}]` : config.apiHost;
+  new Logger('Bootstrap').log(
+    `Shiftboard API listening on http://${host}:${config.apiPort}/api (auth ${config.boardToken ? 'on: BOARD_TOKEN' : 'off'})`,
+  );
 }
 
 bootstrap().catch((e: unknown) => {

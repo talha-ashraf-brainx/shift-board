@@ -6,6 +6,7 @@ import {
   TransitionActor,
   ticketSubject,
   type AgentLogMeta,
+  type CommandLogMeta,
 } from '@agent-board/shared';
 import { RunRegistry, type RunHandle } from '../common/run-registry.service';
 import { WorkerSignal } from '../common/worker-signal.service';
@@ -23,7 +24,8 @@ import { isLegacyWorktree, TicketsService } from '../tickets/tickets.service';
 import { AgentRunner, type AgentRunOutcome, type RunResultInfo } from './agent-runner';
 import { AgentProcessTracker } from './process-tracker';
 import { formatSummaryBody } from './board-tools';
-import { buildSystemAppend, FINISH_REMINDER } from './prompt-builder';
+import { describeCommandResult, runProjectCommand, type CommandResult } from './command-runner';
+import { buildChecksFailedPrompt, buildSystemAppend, FINISH_REMINDER } from './prompt-builder';
 import { determineResumePrompt } from './resume-context';
 import { createRunState, type RunState } from './run-state';
 
@@ -33,6 +35,10 @@ export const NO_FINISH_ERROR =
   'The agent ended its run without calling submit_fix, request_context or give_up, even after a reminder.';
 export const NO_SESSION_NO_FINISH_ERROR =
   'The agent ended its run without calling submit_fix, request_context or give_up (no session to resume for a reminder).';
+
+export function budgetReachedMessage(limit: number, spent: number): string {
+  return `Spending limit reached: $${spent.toFixed(2)} spent of the $${limit.toFixed(2)} limit. Raise the ticket's limit (Edit) and retry.`;
+}
 
 function errorMessage(err: unknown): string {
   if (err instanceof Error) return err.message || err.name;
@@ -101,6 +107,9 @@ export class AgentWorkerService implements OnApplicationBootstrap, OnApplication
     }
   }
 
+  /** Runs that are in flight; at most AGENT_CONCURRENCY, each in its own worktree. */
+  private readonly inFlight = new Set<Promise<void>>();
+
   private async loop(): Promise<void> {
     while (!this.stopping) {
       try {
@@ -108,7 +117,8 @@ export class AgentWorkerService implements OnApplicationBootstrap, OnApplication
         // Checked every iteration (cheap): a project whose main checkout is not clean on its
         // base branch is skipped; it never pauses the whole worker.
         const { readyIds } = await this.projects.refreshReadiness();
-        if (!workerEnabled) {
+        if (!workerEnabled || this.inFlight.size >= this.config.agentConcurrency) {
+          // A finishing run wakes the signal, so a free slot is used right away.
           await this.signal.waitForWake(this.config.pollIntervalMs);
           continue;
         }
@@ -117,12 +127,17 @@ export class AgentWorkerService implements OnApplicationBootstrap, OnApplication
           await this.signal.waitForWake(this.config.pollIntervalMs);
           continue;
         }
-        await this.processTicket(ticket);
+        const run: Promise<void> = this.processTicket(ticket).finally(() => {
+          this.inFlight.delete(run);
+          this.signal.wake();
+        });
+        this.inFlight.add(run);
       } catch (err) {
         this.logger.error(`Worker loop error: ${errorMessage(err)}`, err instanceof Error ? err.stack : undefined);
         await new Promise((r) => setTimeout(r, ERROR_BACKOFF_MS).unref());
       }
     }
+    await Promise.allSettled([...this.inFlight]);
   }
 
   /** Runs one claimed (in_progress) ticket to its next status. Never throws for agent/run errors. */
@@ -157,6 +172,22 @@ export class AgentWorkerService implements OnApplicationBootstrap, OnApplication
         worktreePath: worktree.worktreePath,
       });
     }
+    const cwd = worktree.worktreePath;
+
+    if (project.setupCommand?.trim()) {
+      const setup = await this.runCommand(ticket.id, 'setup', 'Setup', project.setupCommand, cwd, handle);
+      if (handle.signal.aborted) return;
+      if (!setup.ok) {
+        await this.fail(ticket.id, `${describeCommandResult('The project setup command', setup)}:\n${setup.output.slice(-1500)}`);
+        return;
+      }
+    }
+
+    const budget = this.budgetFor(ticket, project);
+    if (budget !== null && budget - ticket.totalCostUsd <= 0) {
+      await this.fail(ticket.id, budgetReachedMessage(budget, ticket.totalCostUsd));
+      return;
+    }
 
     const events = await this.events.listForTicket(ticket.id);
     const { mode, prompt } = determineResumePrompt({ ...ticket, projectName: project.name }, events);
@@ -169,36 +200,112 @@ export class AgentWorkerService implements OnApplicationBootstrap, OnApplication
     });
     this.logger.log(`Running ticket #${ticket.number} in project "${project.name}" (${mode} prompt)`);
 
-    const runState = createRunState();
     const session = {
       id: ticket.sessionId ?? undefined,
       costBaseline: ticket.sessionId ? sessionCostBaseline(events, ticket.sessionId) : 0,
     };
 
-    const runOnce = (runPrompt: string): Promise<AgentRunOutcome> =>
-      this.runner.run({
-        ticket: { id: ticket.id, number: ticket.number, worktreePath: worktree.worktreePath, sessionId: session.id ?? null },
+    /** One SDK query; the spending limit is whatever is left of the ticket's budget. */
+    const runOnce = async (runPrompt: string, runState: RunState): Promise<AgentRunOutcome> => {
+      const spent = budget === null ? 0 : (await this.tickets.findById(ticket.id)).totalCostUsd;
+      return this.runner.run({
+        ticket: { id: ticket.id, number: ticket.number, worktreePath: cwd, sessionId: session.id ?? null },
         prompt: runPrompt,
         systemAppend,
         extraAllowedTools: project.extraAllowedTools ?? [],
+        maxBudgetUsd: budget === null ? undefined : Math.max(budget - spent, 0.01),
         runState,
         handle,
         onSessionId: (id) => this.onSessionId(ticket, session, id),
         onLog: (line, meta) => this.appendLog(ticket.id, line, { ...meta }),
         onResult: (result) => this.recordResult(ticket.id, session, result),
       });
+    };
 
-    let result = await runOnce(prompt);
-    if (result.aborted) return;
+    /** A run, plus one reminder when it ends without a finishing call. null = aborted. */
+    const runWithReminder = async (runPrompt: string) => {
+      const runState = createRunState();
+      let result = await runOnce(runPrompt, runState);
+      if (result.aborted) return null;
+      if (!runState.outcome && !result.resultError && session.id) {
+        this.logger.log(`Ticket #${ticket.number}: no finishing call, resuming once with a reminder`);
+        result = await runOnce(FINISH_REMINDER, runState);
+        if (result.aborted) return null;
+      }
+      return handle.signal.aborted ? null : { runState, result };
+    };
 
-    if (!runState.outcome && !result.resultError && session.id) {
-      this.logger.log(`Ticket #${ticket.number}: no finishing call, resuming once with a reminder`);
-      result = await runOnce(FINISH_REMINDER);
-      if (result.aborted) return;
+    let run = await runWithReminder(prompt);
+    if (!run) return;
+
+    // A submitted fix must pass the project's check command; failures go back to the agent.
+    const checkCommand = project.checkCommand?.trim();
+    for (let attempt = 1; run.runState.outcome === 'review' && checkCommand; attempt++) {
+      if (!(await this.commitFix(git, ticket, cwd))) return;
+      const checks = await this.runCommand(ticket.id, 'checks', 'Checks', checkCommand, cwd, handle, { attempt });
+      if (handle.signal.aborted) return;
+      if (checks.ok) break;
+
+      const spentNow = (await this.tickets.findById(ticket.id)).totalCostUsd;
+      const budgetLeft = budget === null || budget - spentNow > 0;
+      if (attempt > this.config.agentCheckRetries || !session.id || !budgetLeft) {
+        await this.toReview(ticket, run.runState, 'Agent submitted a fix; the checks are still failing');
+        return;
+      }
+      this.logger.log(`Ticket #${ticket.number}: checks failed (attempt ${attempt}), sending the output back to the agent`);
+      run = await runWithReminder(buildChecksFailedPrompt(checkCommand, checks.output));
+      if (!run) return;
     }
 
-    if (handle.signal.aborted) return;
-    await this.resolveOutcome(git, ticket, worktree.worktreePath, runState, result, !session.id);
+    await this.resolveOutcome(git, ticket, cwd, run.runState, run.result, !session.id);
+  }
+
+  /** Ticket limit, else the project's, else AGENT_MAX_BUDGET_USD; null = no limit. */
+  private budgetFor(ticket: TicketEntity, project: { maxBudgetUsd?: number | null }): number | null {
+    return ticket.maxBudgetUsd ?? project.maxBudgetUsd ?? this.config.agentMaxBudgetUsd ?? null;
+  }
+
+  /** Commits what the agent left uncommitted; fails the ticket (returns false) when nothing changed. */
+  private async commitFix(git: GitOperations, ticket: TicketEntity, worktreePath: string): Promise<boolean> {
+    if (await git.hasUncommittedChanges(worktreePath)) {
+      await git.commitAll(worktreePath, `ticket ${ticketSubject(ticket)}`);
+    }
+    if (await git.hasNewCommits(ticket)) return true;
+    await this.fail(ticket.id, NO_CHANGES_ERROR);
+    return false;
+  }
+
+  private async toReview(ticket: TicketEntity, runState: RunState, reason: string): Promise<void> {
+    await this.stateMachine.transition(ticket.id, TicketStatus.Review, {
+      actor: TransitionActor.Worker,
+      reason,
+      patch: { agentSummary: formatSummaryBody(runState.summary ?? '', runState.testing ?? '') },
+    });
+  }
+
+  /** Runs a setup/check command and records the result on the ticket timeline. */
+  private async runCommand(
+    ticketId: string,
+    kind: 'setup' | 'checks',
+    label: string,
+    command: string,
+    cwd: string,
+    handle: RunHandle,
+    extra: Record<string, unknown> = {},
+  ): Promise<CommandResult> {
+    await this.appendLog(ticketId, `${label}: running \`${command}\``, { kind: 'text' });
+    const result = await runProjectCommand(command, cwd, { timeoutMs: this.config.checkTimeoutMs, signal: handle.signal });
+    await this.appendLog(ticketId, describeCommandResult(label, result), {
+      kind,
+      command,
+      passed: result.ok,
+      exitCode: result.exitCode,
+      timedOut: result.timedOut,
+      durationMs: result.durationMs,
+      output: result.output,
+      ...extra,
+    } satisfies CommandLogMeta);
+    return result;
   }
 
   /** The claim assigned the ticket a shared worktree (legacy tickets keep their own). */
@@ -220,18 +327,8 @@ export class AgentWorkerService implements OnApplicationBootstrap, OnApplication
   ): Promise<void> {
     switch (runState.outcome) {
       case 'review': {
-        if (await git.hasUncommittedChanges(worktreePath)) {
-          await git.commitAll(worktreePath, `ticket ${ticketSubject(ticket)}`);
-        }
-        if (!(await git.hasNewCommits(ticket))) {
-          await this.fail(ticket.id, NO_CHANGES_ERROR);
-          return;
-        }
-        await this.stateMachine.transition(ticket.id, TicketStatus.Review, {
-          actor: TransitionActor.Worker,
-          reason: 'Agent submitted a fix for review',
-          patch: { agentSummary: formatSummaryBody(runState.summary ?? '', runState.testing ?? '') },
-        });
+        if (!(await this.commitFix(git, ticket, worktreePath))) return;
+        await this.toReview(ticket, runState, 'Agent submitted a fix for review');
         return;
       }
       case 'needs_context':

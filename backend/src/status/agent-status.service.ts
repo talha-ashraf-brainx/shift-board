@@ -34,12 +34,14 @@ export class AgentStatusService implements OnModuleDestroy {
       this.tickets.countBy({ status: TicketStatus.Pending }),
       this.worktrees.waiting(),
     ]);
-    const current = this.runs.current();
+    const running = this.runs.list();
+    const current = running[0];
     const state = current ? 'running' : settings.workerEnabled ? 'idle' : 'paused';
     return {
       state,
       ticketId: current?.ticketId ?? null,
       ticketNumber: current?.ticketNumber ?? null,
+      running,
       queueLength,
       blockedProjects: this.projects.getBlocked(),
       waiting,

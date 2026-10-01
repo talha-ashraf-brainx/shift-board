@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { SocketEvents } from '@agent-board/shared';
+import { notifyUnauthorized } from '../api/auth';
 import { createBoardSocket } from '../api/socket';
 import { appendEvent, applyProject, applyTicket, queryKeys, removeProject } from '../api/cache';
 
@@ -29,6 +30,11 @@ export function useSocketSync(): SocketState {
       }
       hasConnected = true;
       setState({ connected: true, everConnected: true });
+    });
+
+    // The server rejects the handshake without BOARD_TOKEN; socket.io won't retry that on its own.
+    socket.on('connect_error', (err) => {
+      if (err.message === 'Unauthorized') notifyUnauthorized();
     });
 
     socket.on('disconnect', () => {

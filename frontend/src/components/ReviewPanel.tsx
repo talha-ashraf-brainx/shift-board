@@ -1,4 +1,5 @@
-import { TicketEventType, type AgentSummaryMeta, type TicketWithEventsDto } from '@agent-board/shared';
+import { clsx } from 'clsx';
+import { TicketEventType, type AgentSummaryMeta, type CommandLogMeta, type TicketWithEventsDto } from '@agent-board/shared';
 import { useApproveTicket, useDiff } from '../api/queries';
 import { Button } from './Button';
 import { DiffViewer } from './DiffViewer';
@@ -18,6 +19,43 @@ export function latestSummary(ticket: TicketWithEventsDto): { summary: string; t
 }
 
 /** Loads and renders the ticket's diff (review: live; done: snapshot). */
+/** The latest run of the project's check command, if the project has one. */
+function latestChecks(ticket: TicketWithEventsDto): CommandLogMeta | null {
+  for (let i = ticket.events.length - 1; i >= 0; i--) {
+    const meta = ticket.events[i]!.meta as Partial<CommandLogMeta> | null;
+    if (ticket.events[i]!.type === TicketEventType.AgentLog && meta?.kind === 'checks') return meta as CommandLogMeta;
+  }
+  return null;
+}
+
+function ChecksResult({ ticket }: { ticket: TicketWithEventsDto }) {
+  const checks = latestChecks(ticket);
+  if (!checks) return null;
+  return (
+    <div>
+      <h4 className="mb-1 text-[12px] font-medium text-muted">Checks</h4>
+      <p
+        className={clsx(
+          'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[12px] font-medium',
+          checks.passed ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-700',
+        )}
+      >
+        <Icon name={checks.passed ? 'check' : 'x-circle'} width={13} height={13} />
+        {checks.passed ? 'Passed' : checks.timedOut ? 'Timed out' : `Failing (exit ${checks.exitCode ?? '?'})`}
+        <code className="font-mono font-normal opacity-80">{checks.command}</code>
+      </p>
+      {!checks.passed && checks.output ? (
+        <details className="mt-1.5">
+          <summary className="cursor-pointer text-[12px] text-muted hover:text-ink">Show output</summary>
+          <pre className="mt-1 max-h-64 overflow-auto rounded-control border border-line bg-page px-2.5 py-2 font-mono text-[12px] whitespace-pre-wrap">
+            {checks.output}
+          </pre>
+        </details>
+      ) : null}
+    </div>
+  );
+}
+
 export function TicketDiff({ ticketId }: { ticketId: string }) {
   const { data, isLoading, isError, error, refetch, isFetching } = useDiff(ticketId, true);
   if (isLoading) {
@@ -82,6 +120,7 @@ export function ReviewPanel({ ticket, onReject }: ReviewPanelProps) {
             <h4 className="mb-0.5 text-[12px] font-medium text-muted">Testing</h4>
             {testing ? <Markdown>{testing}</Markdown> : <p className="text-meta text-muted">No testing notes provided.</p>}
           </div>
+          <ChecksResult ticket={ticket} />
         </div>
       </div>
     </section>

@@ -16,9 +16,12 @@ import {
   IsEnum,
   IsInt,
   IsNotEmpty,
+  IsNumber,
   IsOptional,
+  IsPositive,
   IsString,
   IsUUID,
+  Max,
   MaxLength,
   ValidateBy,
   ValidateNested,
@@ -70,6 +73,12 @@ export class CreateTicketDto implements CreateTicketInput {
   @IsOptional()
   @IsEnum(TicketPriority, { message: `priority must be one of: ${Object.values(TicketPriority).join(', ')}` })
   priority?: TicketPriority;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'maxBudgetUsd must be a dollar amount' })
+  @IsPositive({ message: 'maxBudgetUsd must be more than 0' })
+  @Max(10_000)
+  maxBudgetUsd?: number | null;
 }
 
 export class UpdateTicketDto implements UpdateTicketInput {
@@ -101,6 +110,12 @@ export class UpdateTicketDto implements UpdateTicketInput {
   @IsOptional()
   @IsInt()
   position?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'maxBudgetUsd must be a dollar amount' })
+  @IsPositive({ message: 'maxBudgetUsd must be more than 0' })
+  @Max(10_000)
+  maxBudgetUsd?: number | null;
 }
 
 export class ListTicketsQueryDto implements ListTicketsQuery {

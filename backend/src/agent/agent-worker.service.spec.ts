@@ -6,7 +6,15 @@ import type { AppConfig } from '../config/app-config';
 import type { TicketEntity } from '../tickets/ticket.entity';
 import type { AgentRunner, AgentRunOutcome, AgentRunParams } from './agent-runner';
 import { AgentWorkerService, NO_CHANGES_ERROR, NO_FINISH_ERROR } from './agent-worker.service';
+import { runProjectCommand, type CommandResult } from './command-runner';
 import { FINISH_REMINDER } from './prompt-builder';
+
+jest.mock('./command-runner', () => ({
+  ...jest.requireActual('./command-runner'),
+  runProjectCommand: jest.fn(),
+}));
+const runCommand = runProjectCommand as jest.MockedFunction<typeof runProjectCommand>;
+const cmd = (ok: boolean, output = ''): CommandResult => ({ ok, exitCode: ok ? 0 : 1, timedOut: false, output, durationMs: 1200 });
 
 Logger.overrideLogger(false);
 
@@ -42,6 +50,7 @@ function setup(
   scripts: RunScript[],
   gitState: { uncommitted?: boolean; commits?: boolean } = {},
   ticketOverrides: Partial<TicketEntity> = {},
+  opts: { project?: Record<string, unknown>; config?: Partial<AppConfig> } = {},
 ) {
   let ticket = makeTicket(ticketOverrides);
   const tickets = {
@@ -72,6 +81,10 @@ function setup(
     baseBranch: 'main',
     rules: 'Use pnpm',
     extraAllowedTools: ['Bash(pnpm test:*)'],
+    setupCommand: null as string | null,
+    checkCommand: null as string | null,
+    maxBudgetUsd: null as number | null,
+    ...opts.project,
   };
   const projects = {
     findById: jest.fn(async () => project),
@@ -101,7 +114,14 @@ function setup(
       return script(p);
     }),
   };
-  const config = { pollIntervalMs: 10 } as AppConfig;
+  const config = {
+    pollIntervalMs: 10,
+    agentConcurrency: 1,
+    agentMaxBudgetUsd: null,
+    checkTimeoutMs: 1000,
+    agentCheckRetries: 2,
+    ...opts.config,
+  } as AppConfig;
   const gitFactory = { forProject: jest.fn(() => git) };
   const worktrees = { findById: jest.fn(async () => ({ id: 'w1', path: '/wt/ticket-5' })) };
   const worker = new AgentWorkerService(
@@ -197,6 +217,85 @@ describe('AgentWorkerService.processTicket outcome resolution', () => {
       TicketStatus.Failed,
       expect.objectContaining({ reason: expect.stringContaining('no active worktree') }),
     );
+  });
+
+  describe('setup, checks and spending limits', () => {
+    beforeEach(() => runCommand.mockReset());
+
+    it('runs the setup command first and fails the ticket when it fails', async () => {
+      runCommand.mockResolvedValueOnce(cmd(false, 'npm ERR! missing lockfile'));
+      const s = setup([], {}, {}, { project: { setupCommand: 'pnpm install' } });
+      await s.worker.processTicket(s.getTicket());
+      expect(runCommand).toHaveBeenCalledWith('pnpm install', '/wt/ticket-5', expect.objectContaining({ timeoutMs: 1000 }));
+      expect(s.runner.run).not.toHaveBeenCalled();
+      expect(s.stateMachine.transition).toHaveBeenCalledWith('t1', TicketStatus.Failed, expect.objectContaining({
+        reason: expect.stringContaining('npm ERR! missing lockfile'),
+      }));
+    });
+
+    it('passing checks → review, with the result on the timeline', async () => {
+      runCommand.mockResolvedValueOnce(cmd(true));
+      const s = setup([run(submit)], { commits: true }, {}, { project: { checkCommand: 'pnpm test' } });
+      await s.worker.processTicket(s.getTicket());
+      expect(s.stateMachine.transition).toHaveBeenCalledWith('t1', TicketStatus.Review, expect.anything());
+      expect(s.events.append).toHaveBeenCalledWith(expect.objectContaining({
+        body: 'Checks passed in 1s',
+        meta: expect.objectContaining({ kind: 'checks', passed: true, command: 'pnpm test', attempt: 1 }),
+      }));
+    });
+
+    it('failing checks go back to the agent in the same session until they pass', async () => {
+      runCommand.mockResolvedValueOnce(cmd(false, 'FAIL cart.test.js')).mockResolvedValueOnce(cmd(true));
+      const s = setup([run(submit), run(submit)], { commits: true }, {}, { project: { checkCommand: 'pnpm test' } });
+      await s.worker.processTicket(s.getTicket());
+      expect(s.calls).toHaveLength(2);
+      expect(s.calls[1]!.prompt).toContain('FAIL cart.test.js');
+      expect(s.calls[1]!.ticket.sessionId).toBe('sess-1');
+      expect(s.stateMachine.transition).toHaveBeenCalledTimes(1);
+      expect(s.stateMachine.transition).toHaveBeenCalledWith('t1', TicketStatus.Review, expect.objectContaining({
+        reason: 'Agent submitted a fix for review',
+      }));
+    });
+
+    it('checks still failing after the retries → review, marked as failing', async () => {
+      runCommand.mockResolvedValue(cmd(false, 'still red'));
+      const s = setup([run(submit), run(submit)], { commits: true }, {}, {
+        project: { checkCommand: 'pnpm test' },
+        config: { agentCheckRetries: 1 },
+      });
+      await s.worker.processTicket(s.getTicket());
+      expect(runCommand).toHaveBeenCalledTimes(2);
+      expect(s.stateMachine.transition).toHaveBeenCalledWith('t1', TicketStatus.Review, expect.objectContaining({
+        reason: 'Agent submitted a fix; the checks are still failing',
+      }));
+    });
+
+    it('passes what is left of the ticket limit to the SDK', async () => {
+      const s = setup([run(submit)], { commits: true }, { totalCostUsd: 0.75, maxBudgetUsd: 2 }, { project: { maxBudgetUsd: 5 } });
+      await s.worker.processTicket(s.getTicket());
+      expect(s.calls[0]!.maxBudgetUsd).toBeCloseTo(1.25);
+    });
+
+    it('falls back to the project limit, then AGENT_MAX_BUDGET_USD; no limit → none sent', async () => {
+      const a = setup([run(submit)], { commits: true }, {}, { project: { maxBudgetUsd: 3 }, config: { agentMaxBudgetUsd: 9 } });
+      await a.worker.processTicket(a.getTicket());
+      expect(a.calls[0]!.maxBudgetUsd).toBe(3);
+      const b = setup([run(submit)], { commits: true }, {}, { config: { agentMaxBudgetUsd: 9 } });
+      await b.worker.processTicket(b.getTicket());
+      expect(b.calls[0]!.maxBudgetUsd).toBe(9);
+      const c = setup([run(submit)], { commits: true });
+      await c.worker.processTicket(c.getTicket());
+      expect(c.calls[0]!.maxBudgetUsd).toBeUndefined();
+    });
+
+    it('a ticket that already spent its limit fails without running', async () => {
+      const s = setup([], {}, { totalCostUsd: 2.1, maxBudgetUsd: 2 });
+      await s.worker.processTicket(s.getTicket());
+      expect(s.runner.run).not.toHaveBeenCalled();
+      expect(s.stateMachine.transition).toHaveBeenCalledWith('t1', TicketStatus.Failed, expect.objectContaining({
+        reason: expect.stringContaining('Spending limit reached: $2.10 spent of the $2.00 limit'),
+      }));
+    });
   });
 
   it('submit_fix with uncommitted changes → commitAll then review', async () => {
@@ -388,6 +487,27 @@ describe('AgentWorkerService bootstrap and loop', () => {
     expect(s.runner.run).toHaveBeenCalledTimes(1);
     await s.worker.onApplicationShutdown();
     expect(s.registry.abortAll).toHaveBeenCalled();
+  });
+
+  it('runs up to AGENT_CONCURRENCY tickets at the same time', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const blocked: RunScript = async (p) => {
+      await gate;
+      submit(p);
+      return { sessionId: 's', resultSubtype: 'success', aborted: false };
+    };
+    const s = setup([blocked, blocked, blocked], { commits: true }, {}, { config: { agentConcurrency: 2 } });
+    for (const [id, number] of [['a', 1], ['b', 2], ['c', 3]] as const) {
+      s.tickets.claimNext.mockResolvedValueOnce(makeTicket({ id, number }) as never);
+    }
+    await s.worker.onApplicationBootstrap();
+    await new Promise((r) => setTimeout(r, 60));
+    expect(s.registry.list().map((r) => r.ticketNumber)).toEqual([1, 2]);
+    release();
+    await new Promise((r) => setTimeout(r, 60));
+    expect(s.runner.run).toHaveBeenCalledTimes(3);
+    await s.worker.onApplicationShutdown();
   });
 
   it('does not claim while paused', async () => {

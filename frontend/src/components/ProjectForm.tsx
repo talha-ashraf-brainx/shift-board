@@ -6,6 +6,7 @@ import { Icon } from './Icon';
 import { MarkdownField } from './MarkdownField';
 import { Modal } from './Modal';
 import { Skeleton } from './Skeleton';
+import { parseBudget } from '../lib/meta';
 
 const NAME_MAX = 100;
 
@@ -46,12 +47,20 @@ interface FieldsProps {
   repoPath: string;
   branches: string[];
   branchesLoading?: boolean;
-  initial: { name: string; baseBranch: string; rules: string; tools: string };
+  initial: { name: string; baseBranch: string; rules: string; tools: string; setup: string; check: string; budget: string };
   busy: boolean;
   submitLabel: string;
   title: string;
   description: string;
-  onSubmit: (values: { name: string; baseBranch: string; rules: string | null; tools: string[] }) => void;
+  onSubmit: (values: {
+    name: string;
+    baseBranch: string;
+    rules: string | null;
+    tools: string[];
+    setupCommand: string | null;
+    checkCommand: string | null;
+    maxBudgetUsd: number | null;
+  }) => void;
   onBack: () => void;
   backLabel: string;
   onClose: () => void;
@@ -75,6 +84,9 @@ function ProjectFields({
   const [baseBranch, setBaseBranch] = useState(initial.baseBranch);
   const [rules, setRules] = useState(initial.rules);
   const [tools, setTools] = useState(initial.tools);
+  const [setupCommand, setSetupCommand] = useState(initial.setup);
+  const [checkCommand, setCheckCommand] = useState(initial.check);
+  const [budget, setBudget] = useState(initial.budget);
   const [submitted, setSubmitted] = useState(false);
 
   const trimmed = name.trim();
@@ -82,13 +94,23 @@ function ProjectFields({
   const branchError = baseBranch ? null : 'Choose the branch tickets branch off and merge into.';
   const showErrors = submitted;
   const parsedTools = parseTools(tools);
+  const parsedBudget = parseBudget(budget);
+  const budgetError = parsedBudget === undefined ? 'Enter a dollar amount such as 5 or 2.50, or leave it empty.' : null;
 
   function submit(e?: { preventDefault: () => void }) {
     e?.preventDefault();
     if (busy) return;
     setSubmitted(true);
-    if (nameError || branchError) return;
-    onSubmit({ name: trimmed, baseBranch, rules: rules.trim() ? rules : null, tools: parsedTools });
+    if (nameError || branchError || budgetError) return;
+    onSubmit({
+      name: trimmed,
+      baseBranch,
+      rules: rules.trim() ? rules : null,
+      tools: parsedTools,
+      setupCommand: setupCommand.trim() || null,
+      checkCommand: checkCommand.trim() || null,
+      maxBudgetUsd: parsedBudget ?? null,
+    });
   }
 
   const formId = 'project-form';
@@ -222,8 +244,82 @@ function ProjectFields({
             {parsedTools.length > 0 ? ` (${parsedTools.length} tool${parsedTools.length === 1 ? '' : 's'})` : ''}.
           </p>
         </div>
+
+        <CommandField
+          id="project-setup"
+          label="Setup command"
+          value={setupCommand}
+          onChange={setSetupCommand}
+          placeholder="pnpm install --frozen-lockfile"
+          hint="Runs in the worktree before every agent run, so the agent can build and test. A failure fails the ticket."
+        />
+        <CommandField
+          id="project-check"
+          label="Check command"
+          value={checkCommand}
+          onChange={setCheckCommand}
+          placeholder="pnpm lint && pnpm test"
+          hint="Must pass before a fix reaches Review. Failures are sent back to the agent to fix."
+        />
+
+        <div>
+          <label htmlFor="project-budget" className="mb-1 block text-meta font-medium">
+            Spending limit per ticket <span className="font-normal text-muted">(optional)</span>
+          </label>
+          <div className="flex items-center gap-2">
+            <span className="text-muted">$</span>
+            <input
+              id="project-budget"
+              value={budget}
+              onChange={(e) => setBudget(e.target.value)}
+              inputMode="decimal"
+              placeholder="No limit"
+              aria-invalid={showErrors && budgetError ? true : undefined}
+              aria-describedby="project-budget-help"
+              className="field w-32 tabular-nums"
+            />
+          </div>
+          <p
+            id="project-budget-help"
+            className={showErrors && budgetError ? 'mt-1 text-[12px] text-red-600' : 'mt-1 text-[12px] text-muted'}
+            role={showErrors && budgetError ? 'alert' : undefined}
+          >
+            {showErrors && budgetError
+              ? budgetError
+              : 'The agent stops when a ticket has cost this much in total. Tickets can set their own limit.'}
+          </p>
+        </div>
       </form>
     </Modal>
+  );
+}
+
+function CommandField(props: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  hint: string;
+}) {
+  return (
+    <div>
+      <label htmlFor={props.id} className="mb-1 block text-meta font-medium">
+        {props.label} <span className="font-normal text-muted">(optional)</span>
+      </label>
+      <input
+        id={props.id}
+        value={props.value}
+        onChange={(e) => props.onChange(e.target.value)}
+        spellCheck={false}
+        placeholder={props.placeholder}
+        aria-describedby={`${props.id}-help`}
+        className="field font-mono text-[13px]"
+      />
+      <p id={`${props.id}-help`} className="mt-1 text-[12px] text-muted">
+        {props.hint}
+      </p>
+    </div>
   );
 }
 
@@ -296,7 +392,7 @@ export function AddProjectForm({ path, onBack, onClose, onCreated, onOpenExistin
       description="The agent works in worktrees of this repository and merges approved tickets into the base branch."
       repoPath={repoRoot}
       branches={data.branches}
-      initial={{ name: data.suggestedName, baseBranch: defaultBranch(data), rules: '', tools: '' }}
+      initial={{ name: data.suggestedName, baseBranch: defaultBranch(data), rules: '', tools: '', setup: '', check: '', budget: '' }}
       busy={create.isPending}
       submitLabel="Add project"
       backLabel="Back"
@@ -304,7 +400,16 @@ export function AddProjectForm({ path, onBack, onClose, onCreated, onOpenExistin
       onClose={onClose}
       onSubmit={(v) =>
         create.mutate(
-          { name: v.name, repoPath: repoRoot, baseBranch: v.baseBranch, rules: v.rules, extraAllowedTools: v.tools },
+          {
+            name: v.name,
+            repoPath: repoRoot,
+            baseBranch: v.baseBranch,
+            rules: v.rules,
+            extraAllowedTools: v.tools,
+            setupCommand: v.setupCommand,
+            checkCommand: v.checkCommand,
+            maxBudgetUsd: v.maxBudgetUsd,
+          },
           { onSuccess: onCreated },
         )
       }
@@ -334,6 +439,9 @@ export function EditProjectForm({ project, onBack, onClose }: EditProjectFormPro
         baseBranch: project.baseBranch,
         rules: project.rules ?? '',
         tools: project.extraAllowedTools.join('\n'),
+        setup: project.setupCommand ?? '',
+        check: project.checkCommand ?? '',
+        budget: project.maxBudgetUsd != null ? String(project.maxBudgetUsd) : '',
       }}
       busy={update.isPending}
       submitLabel="Save project"
@@ -346,6 +454,9 @@ export function EditProjectForm({ project, onBack, onClose }: EditProjectFormPro
         if (v.baseBranch !== project.baseBranch) input.baseBranch = v.baseBranch;
         if (v.rules !== (project.rules?.trim() ? project.rules : null)) input.rules = v.rules;
         if (!sameList(v.tools, project.extraAllowedTools)) input.extraAllowedTools = v.tools;
+        if (v.setupCommand !== (project.setupCommand ?? null)) input.setupCommand = v.setupCommand;
+        if (v.checkCommand !== (project.checkCommand ?? null)) input.checkCommand = v.checkCommand;
+        if (v.maxBudgetUsd !== (project.maxBudgetUsd ?? null)) input.maxBudgetUsd = v.maxBudgetUsd;
         if (Object.keys(input).length === 0) {
           onBack();
           return;

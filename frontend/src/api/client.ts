@@ -1,4 +1,5 @@
 import type {
+  AuthStatusDto,
   AgentStatusDto,
   AttachmentDto,
   AnswerInput,
@@ -7,6 +8,7 @@ import type {
   CreateTicketInput,
   DiffDto,
   ListTicketsQuery,
+  NotifyTestResultDto,
   ProjectDto,
   RejectInput,
   RepoInspectDto,
@@ -18,6 +20,7 @@ import type {
   UpdateSettingsInput,
   UpdateTicketInput,
 } from '@agent-board/shared';
+import { notifyUnauthorized } from './auth';
 
 /** Error thrown for every non-2xx response; `message` is safe to show to the user. */
 export class ApiError extends Error {
@@ -72,6 +75,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   }
 
   if (!res.ok) {
+    // BOARD_TOKEN is set and our cookie is missing or stale: show the sign-in screen.
+    if (res.status === 401 && !path.startsWith('/auth/')) notifyUnauthorized();
     const fallback = res.status >= 500 ? `Server error (${res.status})` : `Request failed (${res.status})`;
     throw new ApiError(res.status, readMessage(data, fallback));
   }
@@ -92,6 +97,11 @@ function queryString(q?: ListTicketsQuery): string {
 }
 
 export const api = {
+  authStatus: () => request<AuthStatusDto>('GET', '/auth/status'),
+  /** On success the server sets the HttpOnly `shiftboard_token` cookie (sent with every request, socket and <img>). */
+  login: (token: string) => request<{ ok: true }>('POST', '/auth/login', { token }),
+  logout: () => request<{ ok: true }>('POST', '/auth/logout'),
+
   listTickets: (q?: ListTicketsQuery) => request<TicketDto[]>('GET', `/tickets${queryString(q)}`),
   getTicket: (id: string) => request<TicketWithEventsDto>('GET', `/tickets/${enc(id)}`),
   createTicket: (input: CreateTicketInput) => request<TicketDto>('POST', '/tickets', input),
@@ -106,6 +116,7 @@ export const api = {
   getDiff: (id: string) => request<DiffDto>('GET', `/tickets/${enc(id)}/diff`),
   getSettings: () => request<SettingsDto>('GET', '/settings'),
   updateSettings: (input: UpdateSettingsInput) => request<SettingsDto>('PUT', '/settings', input),
+  sendTestNotification: () => request<NotifyTestResultDto>('POST', '/settings/notify-test'),
   getAgentStatus: () => request<AgentStatusDto>('GET', '/agent/status'),
 
   listProjects: () => request<ProjectDto[]>('GET', '/projects'),

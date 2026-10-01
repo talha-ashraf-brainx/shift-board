@@ -156,6 +156,19 @@ export function buildRetryResumePrompt(lastError: string, note?: string | null):
   return lines.join('\n');
 }
 
+export function buildChecksFailedPrompt(command: string, output: string): string {
+  return [
+    `Your fix was submitted, but the project's checks failed. The board ran \`${command}\` in your worktree:`,
+    '',
+    '```',
+    output.trim() || '(no output)',
+    '```',
+    '',
+    'Fix the failures (only those related to this ticket; mention any pre-existing failures in your summary),',
+    'commit, and call submit_fix again.',
+  ].join('\n');
+}
+
 export function buildInterruptedResumePrompt(): string {
   return INTERRUPTED_RESUME_PROMPT;
 }

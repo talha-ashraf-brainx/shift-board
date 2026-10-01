@@ -136,3 +136,11 @@ export function shortId(id: string | null | undefined, len = 8): string {
 export function needsHuman(status: TicketStatus): boolean {
   return status === TicketStatus.NeedsContext || status === TicketStatus.Review;
 }
+
+/** "" → null (no limit); otherwise a dollar amount, or undefined when invalid. */
+export function parseBudget(raw: string): number | null | undefined {
+  const t = raw.trim().replace(/^\$/, '');
+  if (!t) return null;
+  const n = Number(t);
+  return Number.isFinite(n) && n > 0 && n <= 10_000 && Math.round(n * 100) === n * 100 ? n : undefined;
+}

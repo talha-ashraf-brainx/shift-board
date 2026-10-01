@@ -18,9 +18,6 @@ export interface RunHandle {
   finish(): void;
 }
 
-/** Concurrency is 1 for the POC; the map is ready for more. */
-export const MAX_CONCURRENCY = 1;
-
 /**
  * Tracks agent runs in progress so Cancel and shutdown can abort them.
  * The worker registers each run; TicketsService.cancel() calls `abort()`.
@@ -49,6 +46,11 @@ export class RunRegistry {
 
   isRunning(ticketId: string): boolean {
     return this.runs.has(ticketId);
+  }
+
+  /** Every active run, oldest first. */
+  list(): { ticketId: string; ticketNumber: number }[] {
+    return [...this.runs.values()].map((r) => ({ ticketId: r.ticketId, ticketNumber: r.ticketNumber }));
   }
 
   /** The run shown in the status pill (first active run), or null. */

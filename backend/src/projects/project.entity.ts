@@ -1,4 +1,10 @@
-import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateColumn, type ValueTransformer } from 'typeorm';
+
+/** numeric comes back from pg as a string; null stays null. */
+export const optionalNumber: ValueTransformer = {
+  to: (v: number | null | undefined) => v,
+  from: (v: string | number | null) => (v === null || v === undefined ? null : Number(v)),
+};
 
 @Entity({ name: 'projects' })
 export class ProjectEntity {
@@ -24,6 +30,18 @@ export class ProjectEntity {
 
   @Column({ name: 'extra_allowed_tools', type: 'text', array: true, default: () => "'{}'" })
   extraAllowedTools!: string[];
+
+  /** Runs in the worktree before every agent run, e.g. `pnpm install`. */
+  @Column({ name: 'setup_command', type: 'text', nullable: true })
+  setupCommand!: string | null;
+
+  /** Must pass before a fix reaches Review, e.g. `pnpm lint && pnpm test`. */
+  @Column({ name: 'check_command', type: 'text', nullable: true })
+  checkCommand!: string | null;
+
+  /** Spending limit per ticket in USD; null = AGENT_MAX_BUDGET_USD. */
+  @Column({ name: 'max_budget_usd', type: 'numeric', precision: 10, scale: 2, nullable: true, transformer: optionalNumber })
+  maxBudgetUsd!: number | null;
 
   /** The worktree new tickets run in. */
   @Column({ name: 'active_worktree_id', type: 'uuid', nullable: true })

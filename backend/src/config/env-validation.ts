@@ -16,9 +16,15 @@ export class ConfigValidationError extends Error {
 /** Default values for optional variables (poc.md). */
 export const CONFIG_DEFAULTS = {
   agentMaxTurns: 60,
+  agentConcurrency: 3,
+  checkTimeoutMs: 600_000,
+  agentCheckRetries: 2,
   pollIntervalMs: 3000,
   apiPort: 3000,
+  // Loopback only: the board runs an agent with write access to your repos.
+  apiHost: '127.0.0.1',
   webOrigin: 'http://localhost:5173',
+  publicUrl: 'http://localhost:5173',
   // Match the MinIO service in docker-compose.yml.
   s3Endpoint: 'http://localhost:9000',
   s3Region: 'us-east-1',
@@ -66,6 +72,14 @@ function realpathOrResolve(p: string): string {
 
 type Env = Record<string, string | undefined>;
 
+export const MIN_BOARD_TOKEN_LENGTH = 16;
+
+/** True for hosts that only this machine can reach (127.0.0.0/8, ::1, localhost). */
+export function isLoopbackHost(host: string): boolean {
+  const h = host.toLowerCase();
+  return h === 'localhost' || h === '::1' || /^127(\.\d{1,3}){3}$/.test(h);
+}
+
 /**
  * Validates the environment and builds the AppConfig. Collects every problem
  * and throws one ConfigValidationError listing them all. Never logs the API key.
@@ -87,6 +101,26 @@ export function buildAppConfig(env: Env = process.env, logger = new Logger('Conf
     const n = Number(v);
     if (!Number.isInteger(n) || n <= 0 || n > max) {
       problems.push(`${name} must be a positive integer${max < Number.MAX_SAFE_INTEGER ? ` <= ${max}` : ''} (got "${v}")`);
+      return def;
+    }
+    return n;
+  };
+  const optionalUsd = (name: string): number | null => {
+    const v = str(name);
+    if (v === undefined) return null;
+    const n = Number(v);
+    if (!Number.isFinite(n) || n <= 0) {
+      problems.push(`${name} must be a positive dollar amount (got "${v}")`);
+      return null;
+    }
+    return n;
+  };
+  const nonNegativeInt = (name: string, def: number, max: number): number => {
+    const v = str(name);
+    if (v === undefined) return def;
+    const n = Number(v);
+    if (!Number.isInteger(n) || n < 0 || n > max) {
+      problems.push(`${name} must be a whole number from 0 to ${max} (got "${v}")`);
       return def;
     }
     return n;
@@ -158,8 +192,27 @@ export function buildAppConfig(env: Env = process.env, logger = new Logger('Conf
 
   const agentMaxTurns = positiveInt('AGENT_MAX_TURNS', CONFIG_DEFAULTS.agentMaxTurns);
   const pollIntervalMs = positiveInt('POLL_INTERVAL_MS', CONFIG_DEFAULTS.pollIntervalMs);
+  const agentConcurrency = positiveInt('AGENT_CONCURRENCY', CONFIG_DEFAULTS.agentConcurrency, 16);
+  const agentMaxBudgetUsd = optionalUsd('AGENT_MAX_BUDGET_USD');
+  const checkTimeoutMs = positiveInt('CHECK_TIMEOUT_MS', CONFIG_DEFAULTS.checkTimeoutMs);
+  const agentCheckRetries = nonNegativeInt('AGENT_CHECK_RETRIES', CONFIG_DEFAULTS.agentCheckRetries, 10);
   const apiPort = positiveInt('API_PORT', CONFIG_DEFAULTS.apiPort, 65535);
   const webOrigin = str('WEB_ORIGIN') ?? CONFIG_DEFAULTS.webOrigin;
+  const publicUrl = (str('PUBLIC_URL') ?? CONFIG_DEFAULTS.publicUrl).replace(/\/+$/, '');
+  try {
+    if (!/^https?:$/.test(new URL(publicUrl).protocol)) problems.push('PUBLIC_URL must be an http(s):// URL');
+  } catch {
+    problems.push(`PUBLIC_URL is not a valid URL (got "${publicUrl}")`);
+  }
+  const apiHost = str('API_HOST') ?? CONFIG_DEFAULTS.apiHost;
+  if (/\s|\/|^\[|\]$/.test(apiHost)) {
+    problems.push(`API_HOST must be a hostname or IP address, without brackets or a scheme (got "${apiHost}")`);
+  }
+  const boardToken = str('BOARD_TOKEN') ?? null;
+  if (boardToken !== null && boardToken.length < MIN_BOARD_TOKEN_LENGTH) {
+    // Never echo the value.
+    problems.push(`BOARD_TOKEN must be at least ${MIN_BOARD_TOKEN_LENGTH} characters (or unset to disable auth)`);
+  }
   const agentModel = str('AGENT_MODEL');
   const agentExtraAllowedTools = parseToolList(env.AGENT_EXTRA_ALLOWED_TOOLS);
   const anthropicApiKey = str('ANTHROPIC_API_KEY') ?? null;
@@ -187,6 +240,11 @@ export function buildAppConfig(env: Env = process.env, logger = new Logger('Conf
       'ANTHROPIC_API_KEY is not set: the Agent SDK will use the local `claude` CLI login (documented deviation from the spec).',
     );
   }
+  if (!boardToken && !isLoopbackHost(apiHost)) {
+    logger.warn(
+      `API_HOST=${apiHost} exposes the API beyond this machine and BOARD_TOKEN is not set: anyone who can reach it can run the agent.`,
+    );
+  }
 
   const values = {
     databaseUrl,
@@ -196,10 +254,17 @@ export function buildAppConfig(env: Env = process.env, logger = new Logger('Conf
     worktreesDir,
     agentModel,
     agentMaxTurns,
+    agentConcurrency,
+    agentMaxBudgetUsd,
+    checkTimeoutMs,
+    agentCheckRetries,
     agentExtraAllowedTools,
     pollIntervalMs,
     apiPort,
     webOrigin,
+    publicUrl,
+    apiHost,
+    boardToken,
     s3: Object.freeze(s3),
   };
   return Object.freeze(Object.assign(Object.create(AppConfig.prototype) as AppConfig, values));

@@ -194,6 +194,18 @@ export function useUpdateSettings(options: { successMessage?: (s: SettingsDto) =
   });
 }
 
+/** POST /settings/notify-test: toasts the outcome (the server answers ok/error, never throws for webhook failures). */
+export function useSendTestNotification() {
+  return useMutation({
+    mutationFn: () => api.sendTestNotification(),
+    onSuccess: (r) => {
+      if (r.ok) toast.success('Test notification sent');
+      else toast.error('Test notification failed', { description: r.error ?? 'Unknown error' });
+    },
+    onError: onError('Could not send the test notification'),
+  });
+}
+
 export function useCreateProject() {
   const qc = useQueryClient();
   return useMutation({

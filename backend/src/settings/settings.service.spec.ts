@@ -67,11 +67,12 @@ describe('SettingsService + AgentStatusService (Postgres)', () => {
   });
 
   it('reads the seeded defaults and includes read-only repo info', async () => {
-    expect(await settings.get()).toEqual({ globalRules: '', workerEnabled: true });
+    expect(await settings.get()).toEqual({ globalRules: '', workerEnabled: true, notifyWebhookUrl: null });
     expect(await settings.getDto()).toEqual({
       globalRules: '',
       workerEnabled: true,
       worktreesRoot: '/wt',
+      notifyWebhookUrl: null,
     });
   });
 
@@ -86,7 +87,20 @@ describe('SettingsService + AgentStatusService (Postgres)', () => {
 
     // Survives a restart (fresh cache).
     await build();
-    expect(await settings.get()).toEqual({ globalRules: 'Be terse', workerEnabled: false });
+    expect(await settings.get()).toEqual({ globalRules: 'Be terse', workerEnabled: false, notifyWebhookUrl: null });
+  });
+
+  it('stores, keeps and clears the webhook URL', async () => {
+    await settings.update({ notifyWebhookUrl: 'https://hooks.example.com/x' });
+    await settings.update({ globalRules: 'other' });
+    await build();
+    expect((await settings.get()).notifyWebhookUrl).toBe('https://hooks.example.com/x');
+    await settings.update({ notifyWebhookUrl: null });
+    await build();
+    expect((await settings.getDto()).notifyWebhookUrl).toBeNull();
+    await settings.update({ notifyWebhookUrl: 'https://hooks.example.com/y' });
+    await settings.update({ notifyWebhookUrl: '' });
+    expect((await settings.get()).notifyWebhookUrl).toBeNull();
   });
 
   it('status lists projects whose repo is not ready', async () => {
@@ -110,6 +124,7 @@ describe('SettingsService + AgentStatusService (Postgres)', () => {
       state: 'idle',
       ticketId: null,
       ticketNumber: null,
+      running: [],
       queueLength: 2,
       blockedProjects: [],
       waiting: [],

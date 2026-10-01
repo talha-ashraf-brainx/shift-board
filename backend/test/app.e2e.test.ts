@@ -92,7 +92,12 @@ describe('API smoke (e2e)', () => {
     expect(status.body).toMatchObject({ state: 'idle', queueLength: 0, ticketId: null, blockedProjects: [] });
 
     const settings = await http().get('/api/settings').expect(200);
-    expect(settings.body).toEqual({ workerEnabled: true, globalRules: '', worktreesRoot: expect.any(String) });
+    expect(settings.body).toEqual({
+      workerEnabled: true,
+      globalRules: '',
+      worktreesRoot: expect.any(String),
+      notifyWebhookUrl: null,
+    });
     await http().put('/api/settings').send({ globalRules: 'No new deps' }).expect(200);
   });
 
@@ -152,6 +157,12 @@ describe('API smoke (e2e)', () => {
     await http().post(answer).send({ answers: [{ question: 'Q?', selected: [], other: 'x', extra: 1 }] }).expect(400);
     await http().post(answer).send({ answers: [{ question: 'Q?', selected: ['Login'] }] }).expect(404);
     await http().put('/api/settings').send({ workerEnabled: 'yes' }).expect(400);
+    await http().put('/api/settings').send({ notifyWebhookUrl: 'ftp://example.com' }).expect(400);
+    await http().put('/api/settings').send({ notifyWebhookUrl: null }).expect(200);
+    expect((await http().post('/api/settings/notify-test').expect(200)).body).toEqual({
+      ok: false,
+      error: 'No webhook URL is configured',
+    });
   });
 
   it('invalid transitions are 409', async () => {

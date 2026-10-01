@@ -63,6 +63,36 @@ function WorkerStatusPill() {
   const blockedNote = <BlockedNote blocked={blocked} />;
   const blockedLabel = blocked.length > 0 ? `, ${blocked.length} project${blocked.length === 1 ? '' : 's'} blocked` : '';
 
+  const running = status.running ?? [];
+  if (status.state === 'running' && running.length > 1) {
+    return (
+      <span
+        className="inline-flex h-8 animate-fade-in items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 text-meta font-medium text-violet-800"
+        aria-label={`Worker is working on ${running.length} tickets${blockedLabel}`}
+      >
+        <span aria-hidden="true" className="size-2 rounded-full bg-violet-500" />
+        <span>
+          Working on{' '}
+          {running.map((r, i) => (
+            <span key={r.ticketId}>
+              {i > 0 ? ', ' : null}
+              <button
+                type="button"
+                onClick={() => nav.openTicket(r.ticketId)}
+                className="rounded-[4px] hover:underline"
+                aria-label={`Open ticket ${r.ticketNumber}`}
+              >
+                #{r.ticketNumber}
+              </button>
+            </span>
+          ))}
+        </span>
+        {queue}
+        {blockedNote}
+      </span>
+    );
+  }
+
   if (status.state === 'running' && status.ticketId) {
     const ticketId = status.ticketId;
     return (

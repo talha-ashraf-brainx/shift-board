@@ -11,7 +11,7 @@ import {
   UpdateDateColumn,
   type ValueTransformer,
 } from 'typeorm';
-import { ProjectEntity } from '../projects/project.entity';
+import { optionalNumber, ProjectEntity } from '../projects/project.entity';
 
 /** numeric comes back from pg as a string; expose it as a number. */
 export const numericTransformer: ValueTransformer = {
@@ -68,6 +68,10 @@ export class TicketEntity {
    */
   @Column({ name: 'worktree_id', type: 'uuid', nullable: true })
   worktreeId!: string | null;
+
+  /** Spending limit for this ticket in USD; null = the project's (or AGENT_MAX_BUDGET_USD). */
+  @Column({ name: 'max_budget_usd', type: 'numeric', precision: 10, scale: 2, nullable: true, transformer: optionalNumber })
+  maxBudgetUsd!: number | null;
 
   @Column({ name: 'agent_summary', type: 'text', nullable: true })
   agentSummary!: string | null;

@@ -1,6 +1,6 @@
 import type { CreateProjectInput, CreateWorktreeInput, UpdateProjectInput } from '@agent-board/shared';
 import { Transform } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsNotEmpty, IsOptional, IsString, Length, MaxLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsNotEmpty, IsNumber, IsOptional, IsPositive, IsString, Length, Max, MaxLength } from 'class-validator';
 import { Trim, TrimToNull } from '../../common/transformers';
 
 const MAX_TEXT = 100_000;
@@ -49,6 +49,24 @@ export class CreateProjectDto implements CreateProjectInput {
   @IsString({ each: true, message: 'extraAllowedTools must be an array of strings' })
   @MaxLength(500, { each: true })
   extraAllowedTools?: string[];
+
+  @TrimToNull()
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  setupCommand?: string | null;
+
+  @TrimToNull()
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  checkCommand?: string | null;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'maxBudgetUsd must be a dollar amount' })
+  @IsPositive({ message: 'maxBudgetUsd must be more than 0' })
+  @Max(10_000)
+  maxBudgetUsd?: number | null;
 }
 
 export class UpdateProjectDto implements UpdateProjectInput {
@@ -78,6 +96,24 @@ export class UpdateProjectDto implements UpdateProjectInput {
   @IsString({ each: true, message: 'extraAllowedTools must be an array of strings' })
   @MaxLength(500, { each: true })
   extraAllowedTools?: string[];
+
+  @TrimToNull()
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  setupCommand?: string | null;
+
+  @TrimToNull()
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  checkCommand?: string | null;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'maxBudgetUsd must be a dollar amount' })
+  @IsPositive({ message: 'maxBudgetUsd must be more than 0' })
+  @Max(10_000)
+  maxBudgetUsd?: number | null;
 }
 
 export class CreateWorktreeDto implements CreateWorktreeInput {

@@ -18,6 +18,8 @@ export interface TicketDto {
   worktreePath: string | null;
   /** The project worktree the ticket runs in; set when the worker first picks it up. */
   worktreeId: string | null;
+  /** Spending limit for this ticket in USD; null = the project's limit. */
+  maxBudgetUsd: number | null;
   agentSummary: string | null;
   attemptCount: number;
   lastError: string | null;
@@ -78,11 +80,28 @@ export interface AgentSummaryMeta {
 }
 
 export interface AgentLogMeta {
-  /** 'tool' = tool call summary, 'note' = add_note, 'text' = assistant prose excerpt */
-  kind: 'tool' | 'note' | 'text';
+  /**
+   * 'tool' = tool call summary, 'note' = add_note, 'text' = assistant prose excerpt,
+   * 'setup' / 'checks' = result of the project's setup or check command (CommandLogMeta).
+   */
+  kind: 'tool' | 'note' | 'text' | 'setup' | 'checks';
   tool?: string;
   /** Number of log lines coalesced into this event. */
   count?: number;
+}
+
+/** meta of an agent_log event with kind 'setup' or 'checks'. */
+export interface CommandLogMeta extends AgentLogMeta {
+  kind: 'setup' | 'checks';
+  command: string;
+  passed: boolean;
+  exitCode: number | null;
+  timedOut: boolean;
+  durationMs: number;
+  /** The end of stdout/stderr. */
+  output: string;
+  /** Checks only: 1 for the first run after submit_fix, then 2, 3… after each fix attempt. */
+  attempt?: number;
 }
 
 export interface ReviewApprovedMeta {
@@ -120,6 +139,7 @@ export interface CreateTicketInput {
   description: string;
   rules?: string[];
   priority?: TicketPriority;
+  maxBudgetUsd?: number | null;
 }
 
 export interface UpdateTicketInput {
@@ -128,6 +148,7 @@ export interface UpdateTicketInput {
   rules?: string[];
   priority?: TicketPriority;
   position?: number;
+  maxBudgetUsd?: number | null;
 }
 
 export interface ListTicketsQuery {
@@ -155,6 +176,8 @@ export interface RetryInput {
 export interface UpdateSettingsInput {
   globalRules?: string;
   workerEnabled?: boolean;
+  /** http(s) URL (<= 2000 chars) for Slack/Discord-style notifications; null or "" clears it. */
+  notifyWebhookUrl?: string | null;
 }
 
 // ---- Responses ----
@@ -165,14 +188,25 @@ export interface SettingsDto {
   workerEnabled: boolean;
   /** Read-only, from env: root folder under which each project's worktrees live. */
   worktreesRoot: string;
+  /** Incoming-webhook URL POSTed when a ticket needs the human; null = off. */
+  notifyWebhookUrl: string | null;
+}
+
+export interface NotifyTestResultDto {
+  ok: boolean;
+  /** Error message when ok is false. */
+  error?: string;
 }
 
 export type AgentState = 'idle' | 'running' | 'paused';
 
 export interface AgentStatusDto {
   state: AgentState;
+  /** The first running ticket (kept for older clients); see `running` for all of them. */
   ticketId: string | null;
   ticketNumber: number | null;
+  /** Every ticket an agent is working on right now (AGENT_CONCURRENCY at most). */
+  running: { ticketId: string; ticketNumber: number }[];
   queueLength: number;
   /** Projects the worker is currently skipping (repo not on its base branch, dirty, or missing). */
   blockedProjects: { projectId: string; name: string; reason: string }[];
@@ -223,6 +257,12 @@ export interface ProjectDto {
   rules: string | null;
   /** Extra allowed tools for this project, e.g. ["Bash(npm test:*)"]. Added to AGENT_EXTRA_ALLOWED_TOOLS. */
   extraAllowedTools: string[];
+  /** Runs in the worktree before every agent run, e.g. `pnpm install`. */
+  setupCommand: string | null;
+  /** Must pass before a fix reaches Review, e.g. `pnpm lint && pnpm test`. */
+  checkCommand: string | null;
+  /** Spending limit per ticket in USD; null = the server default (AGENT_MAX_BUDGET_USD), if any. */
+  maxBudgetUsd: number | null;
   /** <worktreesRoot>/<slug>; read-only. */
   worktreesDir: string;
   worktrees: WorktreeDto[];
@@ -258,6 +298,9 @@ export interface CreateProjectInput {
   baseBranch: string;
   rules?: string | null;
   extraAllowedTools?: string[];
+  setupCommand?: string | null;
+  checkCommand?: string | null;
+  maxBudgetUsd?: number | null;
 }
 
 export interface UpdateProjectInput {
@@ -265,6 +308,9 @@ export interface UpdateProjectInput {
   baseBranch?: string;
   rules?: string | null;
   extraAllowedTools?: string[];
+  setupCommand?: string | null;
+  checkCommand?: string | null;
+  maxBudgetUsd?: number | null;
 }
 
 /** GET /api/projects/inspect?path=… — validate a folder before adding it as a project. */

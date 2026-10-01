@@ -17,6 +17,7 @@ export function ticketToDto(t: TicketEntity): TicketDto {
     branchName: t.branchName ?? null,
     worktreePath: t.worktreePath ?? null,
     worktreeId: t.worktreeId ?? null,
+    maxBudgetUsd: t.maxBudgetUsd ?? null,
     agentSummary: t.agentSummary ?? null,
     attemptCount: t.attemptCount,
     lastError: t.lastError ?? null,

@@ -159,6 +159,9 @@ export class ProjectsService implements OnModuleInit {
       baseBranch: p.baseBranch,
       rules: p.rules ?? null,
       extraAllowedTools: p.extraAllowedTools ?? [],
+      setupCommand: p.setupCommand ?? null,
+      checkCommand: p.checkCommand ?? null,
+      maxBudgetUsd: p.maxBudgetUsd ?? null,
       worktreesDir: this.gitFactory.worktreesDirFor(p.slug),
       worktrees,
       activeWorktreeId: p.activeWorktreeId ?? null,
@@ -240,6 +243,9 @@ export class ProjectsService implements OnModuleInit {
           baseBranch,
           rules: input.rules ?? null,
           extraAllowedTools: input.extraAllowedTools ?? [],
+          setupCommand: input.setupCommand ?? null,
+          checkCommand: input.checkCommand ?? null,
+          maxBudgetUsd: input.maxBudgetUsd ?? null,
         }),
       );
       await this.worktrees.ensureDefault(saved);
@@ -264,6 +270,9 @@ export class ProjectsService implements OnModuleInit {
     }
     if (input.rules !== undefined) p.rules = input.rules ?? null;
     if (input.extraAllowedTools !== undefined) p.extraAllowedTools = input.extraAllowedTools;
+    if (input.setupCommand !== undefined) p.setupCommand = input.setupCommand ?? null;
+    if (input.checkCommand !== undefined) p.checkCommand = input.checkCommand ?? null;
+    if (input.maxBudgetUsd !== undefined) p.maxBudgetUsd = input.maxBudgetUsd ?? null;
     try {
       await this.repo.save(p);
     } catch (e) {
