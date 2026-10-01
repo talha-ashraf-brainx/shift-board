@@ -5,6 +5,7 @@ import {
   ALL_PRIORITIES,
   HUMAN_ALLOWED_TRANSITIONS,
   TicketStatus,
+  ticketTitle,
   type TicketPriority,
   type TicketWithEventsDto,
 } from '@agent-board/shared';
@@ -149,7 +150,7 @@ function DrawerContent({ ticket, onClose }: { ticket: TicketWithEventsDto; onClo
           </button>
         </div>
         <h2 id="drawer-title" className="mt-2.5 font-display text-[22px] leading-[1.2] font-semibold break-words">
-          {ticket.title}
+          {ticketTitle(ticket)}
         </h2>
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <label htmlFor="drawer-priority" className="sr-only">

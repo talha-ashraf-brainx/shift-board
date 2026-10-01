@@ -7,7 +7,20 @@ import {
   TransitionActor,
   compareTickets,
   isTransitionAllowed,
+  ticketSubject,
+  ticketTitle,
 } from '../index';
+
+test('ticketTitle falls back to the first description line when untitled', () => {
+  assert.equal(ticketTitle({ title: ' Fix login ', description: 'd' }), 'Fix login');
+  assert.equal(ticketTitle({ title: '', description: '\n## Checkout total is wrong\nmore' }), 'Checkout total is wrong');
+  assert.equal(ticketTitle({ title: '', description: 'x'.repeat(300) }).length, 120);
+});
+
+test('ticketSubject omits the title when there is none', () => {
+  assert.equal(ticketSubject({ number: 3, title: 'Fix login' }), '#3: Fix login');
+  assert.equal(ticketSubject({ number: 3, title: '  ' }), '#3');
+});
 
 test('compareTickets orders by priority, then position, then createdAt', () => {
   const tickets = [

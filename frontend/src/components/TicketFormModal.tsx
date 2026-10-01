@@ -28,8 +28,7 @@ interface Errors {
 function validate(projectId: string, title: string, description: string, editing: boolean): Errors {
   const errors: Errors = {};
   if (!editing && !projectId) errors.project = 'Choose the project this ticket belongs to.';
-  if (!title.trim()) errors.title = 'Give the ticket a title.';
-  else if (title.trim().length > TITLE_MAX) errors.title = `Keep the title under ${TITLE_MAX} characters.`;
+  if (title.trim().length > TITLE_MAX) errors.title = `Keep the title under ${TITLE_MAX} characters.`;
   if (!description.trim()) errors.description = 'Describe what is wrong or what to change.';
   return errors;
 }
@@ -187,7 +186,7 @@ export function TicketFormModal({ ticket, onClose, onCreated, defaultProjectId }
           <div className="grid gap-3 sm:grid-cols-[1fr_10rem]">
             <div>
               <label htmlFor="ticket-title" className="mb-1 block text-meta font-medium">
-                Title<span className="text-red-600"> *</span>
+                Title <span className="font-normal text-muted">(optional)</span>
               </label>
               <input
                 id="ticket-title"
@@ -197,7 +196,6 @@ export function TicketFormModal({ ticket, onClose, onCreated, defaultProjectId }
                 placeholder="Checkout total ignores the discount code"
                 aria-invalid={errors.title ? true : undefined}
                 aria-describedby="ticket-title-help"
-                aria-required="true"
                 data-autofocus
                 className="field"
               />

@@ -4,6 +4,7 @@ import {
   TicketEventType,
   TicketStatus,
   TransitionActor,
+  ticketSubject,
   type AgentLogMeta,
 } from '@agent-board/shared';
 import { RunRegistry, type RunHandle } from '../common/run-registry.service';
@@ -209,7 +210,7 @@ export class AgentWorkerService implements OnApplicationBootstrap, OnApplication
     switch (runState.outcome) {
       case 'review': {
         if (await git.hasUncommittedChanges(worktreePath)) {
-          await git.commitAll(worktreePath, `ticket #${ticket.number}: ${ticket.title}`);
+          await git.commitAll(worktreePath, `ticket ${ticketSubject(ticket)}`);
         }
         if (!(await git.hasNewCommits(ticket))) {
           await this.fail(ticket.id, NO_CHANGES_ERROR);

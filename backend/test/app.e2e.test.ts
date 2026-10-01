@@ -116,6 +116,9 @@ describe('API smoke (e2e)', () => {
     await http().patch(`/api/projects/${projectId}`).send({ baseBranch: 'nope' }).expect(400);
 
     await http().post('/api/tickets').send({ projectId, title: 'x', description: 'y' }).expect(201);
+    const untitled = await http().post('/api/tickets').send({ projectId, title: '  ', description: 'no title' }).expect(201);
+    expect(untitled.body.title).toBe('');
+    expect((await http().post('/api/tickets').send({ projectId, description: 'no title' }).expect(201)).body.title).toBe('');
     await http().delete(`/api/projects/${projectId}`).expect(409);
     await app.get(DataSource).query(`UPDATE tickets SET status = 'cancelled'`);
     expect((await http().delete(`/api/projects/${projectId}`).expect(200)).body).toEqual({ id: projectId });
@@ -127,11 +130,11 @@ describe('API smoke (e2e)', () => {
   });
 
   it('validation errors are 400 with a readable string message', async () => {
-    const res = await http().post('/api/tickets').send({ title: '', priority: 'whenever', extra: 1 }).expect(400);
+    const res = await http().post('/api/tickets').send({ title: 'x'.repeat(201), priority: 'whenever', extra: 1 }).expect(400);
     expect(res.body.statusCode).toBe(400);
     expect(typeof res.body.message).toBe('string');
     expect(res.body.message).toContain('property extra should not exist');
-    expect(res.body.message).toContain('title must be between 1 and 200 characters');
+    expect(res.body.message).toContain('title must be at most 200 characters');
     expect(res.body.message).toContain('description is required');
     expect(res.body.message).toContain('priority must be one of');
     expect(res.body.message).toContain('projectId is required');
