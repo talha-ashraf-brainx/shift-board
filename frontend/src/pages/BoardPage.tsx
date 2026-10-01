@@ -53,7 +53,12 @@ export function BoardPage({ socket }: { socket: SocketState }) {
   const [projectsModal, setProjectsModal] = useState<'list' | 'add' | null>(null);
 
   const noProjects = projects.data !== undefined && projects.data.length === 0;
-  const canCreate = (projects.data?.length ?? 0) > 0;
+  const projectCount = projects.data?.length ?? 0;
+  // New tickets go to the project picked in the switcher (or the only one there is).
+  const targetProjectId = selection.selectedId ?? (projectCount === 1 ? projects.data![0]!.id : null);
+  const canCreate = Boolean(targetProjectId);
+  const cantCreateReason =
+    projectCount === 0 ? 'Add a project first' : canCreate ? null : 'Pick a project in the switcher to add a ticket';
   const canCreateRef = useRef(canCreate);
   useEffect(() => {
     canCreateRef.current = canCreate;
@@ -96,6 +101,7 @@ export function BoardPage({ socket }: { socket: SocketState }) {
         onSelectProject={selection.select}
         onManageProjects={() => setProjectsModal('list')}
         canCreateTicket={canCreate}
+        cantCreateReason={cantCreateReason}
         onNewTicket={() => setCreating(true)}
         onOpenSettings={() => setSettingsOpen(true)}
       />
@@ -127,7 +133,7 @@ export function BoardPage({ socket }: { socket: SocketState }) {
       <Outlet />
 
       {creating ? (
-        <TicketFormModal defaultProjectId={selectedId} onClose={() => setCreating(false)} onCreated={open} />
+        <TicketFormModal projectId={targetProjectId} onClose={() => setCreating(false)} onCreated={open} />
       ) : null}
       {projectsModal ? (
         <ProjectsModal

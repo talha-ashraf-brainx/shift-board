@@ -14,6 +14,8 @@ interface HeaderProps {
   onManageProjects: () => void;
   /** False until at least one project exists. */
   canCreateTicket: boolean;
+  /** Why New ticket is disabled (tooltip). */
+  cantCreateReason?: string | null;
   onNewTicket: () => void;
   onOpenSettings: () => void;
 }
@@ -143,6 +145,7 @@ export function Header({
   onSelectProject,
   onManageProjects,
   canCreateTicket,
+  cantCreateReason,
   onNewTicket,
   onOpenSettings,
 }: HeaderProps) {
@@ -170,7 +173,7 @@ export function Header({
           disabled={!canCreateTicket}
           icon={<Icon name="plus" />}
           aria-keyshortcuts="N"
-          title={canCreateTicket ? 'New ticket (N)' : 'Add a project first'}
+          title={canCreateTicket ? 'New ticket (N)' : (cantCreateReason ?? 'Add a project first')}
           className="ml-1"
         >
           <span className="hidden sm:inline">New ticket</span>
