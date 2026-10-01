@@ -7,7 +7,7 @@ import { Spinner } from './Spinner';
 export function ProjectNotReadyBanner({ project }: { project: ProjectDto | undefined }) {
   if (!project || project.repoStatus.ready) return null;
   return (
-    <div role="alert" className="flex items-start gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-meta text-amber-900">
+    <div role="alert" className="flex animate-fade-in items-start gap-2 border-b border-amber-200 bg-amber-50 px-5 py-2.5 text-meta text-amber-900">
       <Icon name="alert" className="mt-px shrink-0 text-amber-600" />
       <p>
         <span className="font-semibold">{project.name}: repository not ready. </span>
@@ -31,7 +31,7 @@ export function ReconnectingBanner({ connected, everConnected }: { connected: bo
 
   if (connected || (!everConnected && !graceOver)) return null;
   return (
-    <output className="flex items-center gap-2 border-b border-line bg-stone-100 px-4 py-1.5 text-meta text-muted">
+    <output className="flex animate-fade-in items-center gap-2 border-b border-line bg-stone-100 px-5 py-1.5 text-meta text-muted">
       <Spinner className="size-3.5" />
       {everConnected ? 'Reconnecting… live updates are paused.' : 'Connecting to live updates…'}
     </output>

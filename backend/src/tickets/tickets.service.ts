@@ -176,8 +176,7 @@ export class TicketsService {
         projectId: project.id,
         title: input.title,
         description: input.description,
-        context: input.context ?? null,
-        rules: input.rules ?? null,
+        rules: input.rules ?? [],
         ...(priority ? { priority } : {}),
       });
       const rows = (await m.query(
@@ -227,7 +226,7 @@ export class TicketsService {
       if (t.status === TicketStatus.InProgress) {
         throw new ConflictException(`Ticket #${t.number} is in progress and cannot be edited right now`);
       }
-      const fields = ['title', 'description', 'context', 'rules', 'priority', 'position'] as const;
+      const fields = ['title', 'description', 'rules', 'priority', 'position'] as const;
       for (const f of fields) {
         if (input[f] !== undefined) (t as unknown as Record<string, unknown>)[f] = input[f];
       }

@@ -10,24 +10,30 @@ interface TicketCardProps extends HTMLAttributes<HTMLDivElement> {
   ticket: TicketDto;
   dragging?: boolean;
   overlay?: boolean;
+  /** Position in its column; staggers the entrance on first load. */
+  index?: number;
   ref?: Ref<HTMLDivElement>;
 }
 
 /** Presentational card; drag/sortable wiring lives in SortableTicketCard. */
-export function TicketCard({ ticket, dragging = false, overlay = false, className, ref, ...rest }: TicketCardProps) {
+export function TicketCard({ ticket, dragging = false, overlay = false, index = 0, className, style, ref, ...rest }: TicketCardProps) {
   const attention = needsHuman(ticket.status);
   const muted = ticket.status === TicketStatus.Cancelled;
   const projectTag = useProjectTag(ticket.projectId);
+  const working = ticket.status === TicketStatus.InProgress;
   return (
     <div
       ref={ref}
+      style={overlay ? style : { animationDelay: `${Math.min(index, 8) * 35}ms`, ...style }}
       className={clsx(
-        'group relative rounded-card border bg-surface p-3 text-left transition-[border-color,opacity]',
-        'border-line',
-        dragging && !overlay && 'opacity-40',
-        overlay && 'rotate-[0.6deg] border-accent/50 shadow-sm',
-        !dragging && 'hover:border-stone-300',
-        muted && 'opacity-70',
+        'group relative rounded-card border bg-surface p-3 text-left shadow-card',
+        'transition-[border-color,box-shadow,opacity] duration-200 ease-out-soft',
+        working ? 'working-edge border-violet-200' : 'border-line',
+        !overlay && 'animate-card-in',
+        dragging && !overlay && 'border-dashed border-line-strong bg-transparent opacity-50 shadow-none',
+        overlay && 'animate-lift border-accent/60',
+        !dragging && !overlay && 'hover:border-line-strong hover:shadow-card-hover',
+        muted && 'opacity-65',
         className,
       )}
       {...rest}
@@ -43,10 +49,10 @@ export function TicketCard({ ticket, dragging = false, overlay = false, classNam
       ) : null}
       <div className="flex items-center justify-between gap-2">
         <span className="flex min-w-0 items-center gap-1.5">
-          <span className="shrink-0 font-mono text-[12px] text-muted">#{ticket.number}</span>
+          <span className="shrink-0 text-[12px] font-medium text-muted tabular-nums">#{ticket.number}</span>
           {projectTag ? (
             <span
-              className="truncate rounded-[4px] bg-stone-100 px-1.5 text-[11px] leading-[18px] font-medium text-stone-600"
+              className="truncate rounded-[5px] bg-stone-100 px-1.5 text-[11px] leading-[18px] font-medium text-stone-600"
               title={`Project: ${projectTag}`}
             >
               {projectTag}
@@ -55,13 +61,14 @@ export function TicketCard({ ticket, dragging = false, overlay = false, classNam
         </span>
         <PriorityBadge priority={ticket.priority} />
       </div>
-      <p className="mt-1.5 line-clamp-2 font-medium break-words text-ink">{ticket.title}</p>
+      <p className="mt-1.5 line-clamp-2 leading-snug font-medium break-words text-ink">{ticket.title}</p>
       <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[12px] text-muted">
         <time dateTime={ticket.updatedAt} title={`Updated ${absoluteTime(ticket.updatedAt)}`}>
           {relativeTime(ticket.updatedAt)}
         </time>
         {ticket.attemptCount > 1 ? <span>Attempt {ticket.attemptCount}</span> : null}
         {ticket.totalCostUsd > 0 ? <span title="Agent cost so far">{formatCost(ticket.totalCostUsd)}</span> : null}
+        {working ? <span className="font-medium text-violet-700">Agent working</span> : null}
         {ticket.status === TicketStatus.Failed ? <span className="font-medium text-red-700">Failed</span> : null}
         {ticket.status === TicketStatus.Cancelled ? <span>Cancelled</span> : null}
         {attention ? (

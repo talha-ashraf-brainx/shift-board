@@ -8,10 +8,25 @@ import {
   type RetryInput,
   type UpdateTicketInput,
 } from '@agent-board/shared';
-import { IsBoolean, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Length, MaxLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Length, MaxLength } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { Trim, TrimToNull } from '../../common/transformers';
 
 const MAX_TEXT = 100_000;
+const MAX_RULE = 2_000;
+
+/** Trims each rule and drops empty ones and duplicates; non-arrays pass through for the validators. */
+const RuleList = () =>
+  Transform(({ value }) => {
+    if (!Array.isArray(value)) return value;
+    const out: unknown[] = [];
+    for (const v of value) {
+      const t = typeof v === 'string' ? v.trim() : v;
+      if (t === '' || out.includes(t)) continue;
+      out.push(t);
+    }
+    return out;
+  });
 
 export class CreateTicketDto implements CreateTicketInput {
   @IsNotEmpty({ message: 'projectId is required' })
@@ -29,17 +44,13 @@ export class CreateTicketDto implements CreateTicketInput {
   @MaxLength(MAX_TEXT)
   description!: string;
 
-  @TrimToNull()
+  @RuleList()
   @IsOptional()
-  @IsString()
-  @MaxLength(MAX_TEXT)
-  context?: string | null;
-
-  @TrimToNull()
-  @IsOptional()
-  @IsString()
-  @MaxLength(MAX_TEXT)
-  rules?: string | null;
+  @IsArray({ message: 'rules must be an array of strings' })
+  @ArrayMaxSize(100)
+  @IsString({ each: true, message: 'rules must be an array of strings' })
+  @MaxLength(MAX_RULE, { each: true })
+  rules?: string[];
 
   @IsOptional()
   @IsEnum(TicketPriority, { message: `priority must be one of: ${Object.values(TicketPriority).join(', ')}` })
@@ -60,17 +71,13 @@ export class UpdateTicketDto implements UpdateTicketInput {
   @MaxLength(MAX_TEXT)
   description?: string;
 
-  @TrimToNull()
+  @RuleList()
   @IsOptional()
-  @IsString()
-  @MaxLength(MAX_TEXT)
-  context?: string | null;
-
-  @TrimToNull()
-  @IsOptional()
-  @IsString()
-  @MaxLength(MAX_TEXT)
-  rules?: string | null;
+  @IsArray({ message: 'rules must be an array of strings' })
+  @ArrayMaxSize(100)
+  @IsString({ each: true, message: 'rules must be an array of strings' })
+  @MaxLength(MAX_RULE, { each: true })
+  rules?: string[];
 
   @IsOptional()
   @IsEnum(TicketPriority, { message: `priority must be one of: ${Object.values(TicketPriority).join(', ')}` })

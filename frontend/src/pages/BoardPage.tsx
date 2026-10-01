@@ -26,12 +26,12 @@ function isTypingTarget(target: EventTarget | null): boolean {
 function NoProjectsState({ onAdd }: { onAdd: () => void }) {
   return (
     <div className="flex h-full items-center justify-center p-6">
-      <div className="flex max-w-md flex-col items-center gap-3 rounded-card border border-line bg-surface px-8 py-10 text-center shadow-sm">
-        <span aria-hidden="true" className="grid size-10 place-items-center rounded-full bg-accent-soft text-accent">
+      <div className="flex max-w-md animate-pop-in flex-col items-center gap-3 rounded-[16px] border border-line bg-surface px-9 py-11 text-center shadow-card">
+        <span aria-hidden="true" className="mb-1 grid size-12 place-items-center rounded-[12px] bg-accent-soft text-accent">
           <Icon name="folder" width={20} height={20} />
         </span>
-        <h2 className="text-[16px] font-semibold">Add your first project</h2>
-        <p className="text-meta text-muted">
+        <h2 className="font-display text-[22px] leading-tight font-semibold">Add your first project</h2>
+        <p className="text-meta text-pretty text-muted">
           A project is a git repository on this machine. The agent works on its tickets in separate worktrees and merges
           approved fixes into the base branch.
         </p>
@@ -105,8 +105,8 @@ export function BoardPage({ socket }: { socket: SocketState }) {
         {noProjects ? (
           <NoProjectsState onAdd={() => setProjectsModal('add')} />
         ) : tickets.isError && !tickets.data ? (
-          <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-            <p className="font-medium">Could not load tickets</p>
+          <div className="flex h-full animate-fade-in flex-col items-center justify-center gap-3 p-6 text-center">
+            <p className="font-display text-[18px] font-semibold">Could not load tickets</p>
             <p className="max-w-md text-meta text-muted">{tickets.error.message}</p>
             <Button onClick={() => void tickets.refetch()} loading={tickets.isFetching}>
               Try again

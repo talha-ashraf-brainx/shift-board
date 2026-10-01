@@ -6,6 +6,7 @@ import { Button } from './Button';
 import { Icon } from './Icon';
 import { MarkdownField } from './MarkdownField';
 import { Modal } from './Modal';
+import { RulesField } from './RulesField';
 
 const TITLE_MAX = 200;
 
@@ -33,7 +34,12 @@ function validate(projectId: string, title: string, description: string, editing
   return errors;
 }
 
-const optional = (v: string): string | null => (v.trim() ? v : null);
+/** Trimmed, non-empty, de-duplicated rules (the API normalises the same way). */
+function cleanRules(rules: string[]): string[] {
+  return [...new Set(rules.map((r) => r.trim()).filter(Boolean))];
+}
+
+const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((v, i) => v === b[i]);
 
 export function TicketFormModal({ ticket, onClose, onCreated, defaultProjectId }: TicketFormModalProps) {
   const editing = Boolean(ticket);
@@ -52,8 +58,7 @@ export function TicketFormModal({ ticket, onClose, onCreated, defaultProjectId }
   const [title, setTitle] = useState(ticket?.title ?? '');
   const [priority, setPriority] = useState<TicketPriority>(ticket?.priority ?? TicketPriority.Medium);
   const [description, setDescription] = useState(ticket?.description ?? '');
-  const [context, setContext] = useState(ticket?.context ?? '');
-  const [rules, setRules] = useState(ticket?.rules ?? '');
+  const [rules, setRules] = useState<string[]>(ticket?.rules ?? []);
   const [submitted, setSubmitted] = useState(false);
 
   const create = useCreateTicket();
@@ -73,8 +78,7 @@ export function TicketFormModal({ ticket, onClose, onCreated, defaultProjectId }
       if (title.trim() !== ticket.title) input.title = title.trim();
       if (priority !== ticket.priority) input.priority = priority;
       if (description !== ticket.description) input.description = description;
-      if (optional(context) !== ticket.context) input.context = optional(context);
-      if (optional(rules) !== ticket.rules) input.rules = optional(rules);
+      if (!sameList(cleanRules(rules), ticket.rules)) input.rules = cleanRules(rules);
       if (Object.keys(input).length === 0) {
         onClose();
         return;
@@ -82,7 +86,7 @@ export function TicketFormModal({ ticket, onClose, onCreated, defaultProjectId }
       update.mutate({ id: ticket.id, input }, { onSuccess: onClose });
     } else {
       create.mutate(
-        { projectId, title: title.trim(), priority, description, context: optional(context), rules: optional(rules) },
+        { projectId, title: title.trim(), priority, description, rules: cleanRules(rules) },
         {
           onSuccess: (created) => {
             onClose();
@@ -234,20 +238,12 @@ export function TicketFormModal({ ticket, onClose, onCreated, defaultProjectId }
             placeholder="What is wrong, and what should happen instead?"
             disabled={locked}
           />
-          <MarkdownField
-            label="Context"
-            value={context}
-            onChange={setContext}
-            rows={4}
-            hint="Files, logs and reproduction steps that help the agent start."
-            disabled={locked}
-          />
-          <MarkdownField
+          <RulesField
             label="Rules for this ticket"
             value={rules}
             onChange={setRules}
-            rows={3}
-            hint="Added to the global rules, e.g. “Do not modify tests.”"
+            placeholder="Do not modify tests"
+            hint="Each rule is added to the global and project rules. Enter adds another."
             disabled={locked}
           />
         </fieldset>

@@ -83,7 +83,7 @@ function FileDiff({ entry, index }: { entry: FileEntry; index: number }) {
 function HunkRows({ header, lines }: { header: string; lines: ParsedFile['hunks'][number]['lines'] }) {
   return (
     <>
-      <tr className="bg-indigo-50/60 text-indigo-800">
+      <tr className="bg-violet-50/70 text-violet-800">
         <td colSpan={3} className="px-3 py-0.5 whitespace-pre select-none">
           {header}
         </td>

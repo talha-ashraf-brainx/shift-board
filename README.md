@@ -1,4 +1,4 @@
-# Agent Board
+# Shiftboard
 
 A ticket board where you file issues against a git repository and an AI agent, built on the [Claude Agent SDK](https://docs.claude.com/en/api/agent-sdk/typescript), picks them up. For each ticket, the agent either fixes it and hands it back for review, or asks for more context. You answer its questions, or you approve the fix (which merges it) or reject it with feedback, and the agent resumes the same session. The board updates live.
 

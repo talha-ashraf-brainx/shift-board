@@ -53,7 +53,7 @@ export function ReviewPanel({ ticket, onReject }: ReviewPanelProps) {
 
   return (
     <section aria-labelledby="review-title">
-      <div className="rounded-card border border-teal-200 bg-teal-50/50 p-3">
+      <div className="animate-rise-in rounded-card border border-teal-200 bg-teal-50/60 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 id="review-title" className="flex items-center gap-1.5 text-meta font-semibold text-teal-900">
             <Icon name="sparkle" width={14} height={14} />

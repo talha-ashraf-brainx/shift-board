@@ -16,7 +16,7 @@ describe('prompt-builder', () => {
   it('buildSystemAppend fills branch, base and rules', () => {
     expect(buildSystemAppend({ branchName: 'agent/ticket-7', baseBranch: 'main', globalRules: 'Use tabs.' })).toBe(
       [
-        'You are an autonomous engineer working through tickets on the Agent Board.',
+        'You are an autonomous engineer working through tickets on Shiftboard.',
         'You are inside a git worktree on branch agent/ticket-7, created from main.',
         '',
         'Rules for every ticket:',
@@ -47,8 +47,7 @@ describe('prompt-builder', () => {
         priority: 'high',
         title: 'Fix login',
         description: 'Login fails.',
-        context: 'See auth.ts',
-        rules: 'Do not modify tests',
+        rules: ['Do not modify tests', 'Use pnpm'],
       }),
     ).toBe(
       [
@@ -57,18 +56,15 @@ describe('prompt-builder', () => {
         '## Description',
         'Login fails.',
         '',
-        '## Context provided',
-        'See auth.ts',
-        '',
         '## Ticket-specific rules (these override global rules if they conflict)',
-        'Do not modify tests',
+        '- Do not modify tests',
+        '- Use pnpm',
       ].join('\n'),
     );
   });
 
-  it('buildFirstRunPrompt uses "None" for missing context and rules', () => {
-    const p = buildFirstRunPrompt({ number: 1, priority: 'low', title: 't', description: 'd', context: null, rules: '' });
-    expect(p).toContain('## Context provided\nNone\n');
+  it('buildFirstRunPrompt uses "None" for missing rules', () => {
+    const p = buildFirstRunPrompt({ number: 1, priority: 'low', title: 't', description: 'd', rules: [' '] });
     expect(p).toMatch(/conflict\)\nNone$/);
   });
 

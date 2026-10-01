@@ -31,7 +31,7 @@ export function Modal({ title, description, onClose, children, footer, size = 'm
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:pt-[8vh]">
-      <div aria-hidden="true" className="fixed inset-0 bg-stone-900/25" onMouseDown={safeClose} />
+      <div aria-hidden="true" className="fixed inset-0 animate-fade-in bg-scrim backdrop-blur-[3px]" onMouseDown={safeClose} />
       <dialog
         open
         ref={panelRef}
@@ -40,13 +40,13 @@ export function Modal({ title, description, onClose, children, footer, size = 'm
         aria-describedby={description ? descId : undefined}
         tabIndex={-1}
         className={clsx(
-          'relative m-0 flex max-h-[calc(100vh-2rem)] w-full flex-col rounded-card border border-line bg-surface text-ink shadow-sm sm:max-h-[84vh]',
+          'relative m-0 flex max-h-[calc(100vh-2rem)] w-full animate-pop-in flex-col overflow-hidden rounded-[14px] border border-line bg-surface text-ink shadow-pop sm:max-h-[84vh]',
           WIDTHS[size],
         )}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-line px-4 py-3">
+        <div className="flex items-start justify-between gap-4 border-b border-line px-5 pt-4 pb-3.5">
           <div className="min-w-0">
-            <h2 id={titleId} className="text-[15px] font-semibold text-ink">
+            <h2 id={titleId} className="font-display text-[18px] leading-tight font-semibold text-ink">
               {title}
             </h2>
             {description ? (
@@ -59,14 +59,14 @@ export function Modal({ title, description, onClose, children, footer, size = 'm
             type="button"
             onClick={safeClose}
             aria-label="Close"
-            className="-mr-1 rounded-control p-1 text-muted hover:bg-stone-100 hover:text-ink"
+            className="-mr-1.5 rounded-control p-1.5 text-muted transition-colors hover:bg-stone-100 hover:text-ink"
           >
             <Icon name="close" />
           </button>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
         {footer ? (
-          <div className="flex items-center justify-end gap-2 border-t border-line bg-page/60 px-4 py-3">{footer}</div>
+          <div className="flex items-center justify-end gap-2 border-t border-line bg-page/70 px-5 py-3">{footer}</div>
         ) : null}
       </dialog>
     </div>,

@@ -126,7 +126,8 @@ describe('TicketsService (Postgres)', () => {
 
     it('update edits fields, keeps position on priority change, and is 409 while in_progress', async () => {
       const t = await create('x');
-      const u = await svc.update(t.id, { title: 'y', priority: TicketPriority.Urgent, context: null });
+      const u = await svc.update(t.id, { title: 'y', priority: TicketPriority.Urgent, rules: ['Keep it small'] });
+      expect(u.rules).toEqual(['Keep it small']);
       expect(u.title).toBe('y');
       expect(u.priority).toBe(TicketPriority.Urgent);
       expect(u.position).toBe(t.position);

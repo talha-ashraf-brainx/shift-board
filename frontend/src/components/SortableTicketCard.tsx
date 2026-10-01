@@ -9,11 +9,12 @@ import { TicketCard } from './TicketCard';
 interface SortableTicketCardProps {
   ticket: TicketDto;
   columnKey: ColumnKey;
+  index: number;
   disabled: boolean;
   onOpen: (ticket: TicketDto) => void;
 }
 
-export function SortableTicketCard({ ticket, columnKey, disabled, onOpen }: SortableTicketCardProps) {
+export function SortableTicketCard({ ticket, columnKey, index, disabled, onOpen }: SortableTicketCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: ticket.id,
     data: { type: 'card', columnKey, ticket },
@@ -35,6 +36,7 @@ export function SortableTicketCard({ ticket, columnKey, disabled, onOpen }: Sort
     <TicketCard
       ref={setNodeRef}
       ticket={ticket}
+      index={index}
       dragging={isDragging}
       style={style}
       {...attributes}

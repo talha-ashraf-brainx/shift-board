@@ -13,10 +13,10 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const VARIANTS: Record<Variant, string> = {
-  primary: 'bg-accent text-white hover:bg-accent-hover border border-accent',
-  secondary: 'bg-surface text-ink border border-line hover:bg-stone-50',
+  primary: 'bg-primary text-on-primary hover:bg-primary-hover border border-primary shadow-[0_1px_2px_rgb(0_0_0/0.12)]',
+  secondary: 'bg-surface text-ink border border-line hover:border-line-strong hover:bg-stone-50 shadow-[0_1px_1px_rgb(0_0_0/0.03)]',
   ghost: 'bg-transparent text-muted border border-transparent hover:bg-stone-100 hover:text-ink',
-  danger: 'bg-surface text-red-700 border border-red-200 hover:bg-red-50',
+  danger: 'bg-surface text-red-700 border border-red-200 hover:border-red-300 hover:bg-red-50',
 };
 
 const SIZES: Record<Size, string> = {
@@ -42,7 +42,8 @@ export function Button({
       disabled={disabled || loading}
       aria-busy={loading || undefined}
       className={clsx(
-        'inline-flex shrink-0 items-center justify-center rounded-control font-medium whitespace-nowrap transition-colors',
+        'inline-flex shrink-0 items-center justify-center rounded-control font-medium whitespace-nowrap select-none',
+        'transition-[background-color,border-color,color,transform,box-shadow] duration-150 ease-out-soft active:scale-[0.97] disabled:active:scale-100',
         'disabled:cursor-not-allowed disabled:opacity-50',
         VARIANTS[variant],
         SIZES[size],

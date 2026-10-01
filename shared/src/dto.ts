@@ -8,8 +8,8 @@ export interface TicketDto {
   projectId: string | null;
   title: string;
   description: string;
-  context: string | null;
-  rules: string | null;
+  /** Ticket-specific rules, one entry each; empty when only global and project rules apply. */
+  rules: string[];
   priority: TicketPriority;
   status: TicketStatus;
   sessionId: string | null;
@@ -85,16 +85,14 @@ export interface CreateTicketInput {
   projectId: string;
   title: string;
   description: string;
-  context?: string | null;
-  rules?: string | null;
+  rules?: string[];
   priority?: TicketPriority;
 }
 
 export interface UpdateTicketInput {
   title?: string;
   description?: string;
-  context?: string | null;
-  rules?: string | null;
+  rules?: string[];
   priority?: TicketPriority;
   position?: number;
 }

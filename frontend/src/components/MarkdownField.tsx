@@ -52,7 +52,7 @@ export function MarkdownField({
               aria-pressed={mode === m}
               onClick={() => setMode(m)}
               className={clsx(
-                'rounded-[4px] px-2 py-0.5 font-medium capitalize',
+                'rounded-[5px] px-2 py-0.5 font-medium capitalize transition-[background-color,color,box-shadow] duration-150',
                 mode === m ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-ink',
               )}
             >

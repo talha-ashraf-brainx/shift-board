@@ -17,7 +17,7 @@ import {
 
 const GIT_TIMEOUT_MS = 60_000;
 const GIT_MAX_BUFFER = 64 * 1024 * 1024;
-const FALLBACK_NAME = 'Agent Board';
+const FALLBACK_NAME = 'Shiftboard';
 const FALLBACK_EMAIL = 'agent-board@localhost';
 
 interface RunResult {

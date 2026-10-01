@@ -13,7 +13,7 @@ export const STATUS_LABEL: Record<TicketStatus, string> = {
 /** Dot color class per status. */
 export const STATUS_DOT: Record<TicketStatus, string> = {
   [TicketStatus.Pending]: 'bg-stone-400',
-  [TicketStatus.InProgress]: 'bg-indigo-500',
+  [TicketStatus.InProgress]: 'bg-violet-500',
   [TicketStatus.NeedsContext]: 'bg-amber-500',
   [TicketStatus.Review]: 'bg-teal-500',
   [TicketStatus.Done]: 'bg-green-600',
@@ -24,7 +24,7 @@ export const STATUS_DOT: Record<TicketStatus, string> = {
 /** Badge (tinted background + darker text) per status. */
 export const STATUS_BADGE: Record<TicketStatus, string> = {
   [TicketStatus.Pending]: 'bg-stone-100 text-stone-700',
-  [TicketStatus.InProgress]: 'bg-indigo-50 text-indigo-700',
+  [TicketStatus.InProgress]: 'bg-violet-50 text-violet-700',
   [TicketStatus.NeedsContext]: 'bg-amber-50 text-amber-800',
   [TicketStatus.Review]: 'bg-teal-50 text-teal-800',
   [TicketStatus.Done]: 'bg-green-50 text-green-800',
@@ -42,7 +42,7 @@ export const PRIORITY_LABEL: Record<TicketPriority, string> = {
 export const PRIORITY_BADGE: Record<TicketPriority, string> = {
   [TicketPriority.Urgent]: 'bg-red-50 text-red-700 ring-red-200',
   [TicketPriority.High]: 'bg-orange-50 text-orange-700 ring-orange-200',
-  [TicketPriority.Medium]: 'bg-blue-50 text-blue-700 ring-blue-200',
+  [TicketPriority.Medium]: 'bg-sky-50 text-sky-700 ring-sky-200',
   [TicketPriority.Low]: 'bg-stone-100 text-stone-600 ring-stone-200',
 };
 

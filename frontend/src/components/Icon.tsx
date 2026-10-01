@@ -23,7 +23,10 @@ export type IconName =
   | 'folder'
   | 'arrow-up'
   | 'trash'
-  | 'branch';
+  | 'branch'
+  | 'sun'
+  | 'moon'
+  | 'monitor';
 
 const PATHS: Record<IconName, string> = {
   plus: 'M8 3.5v9M3.5 8h9',
@@ -49,6 +52,9 @@ const PATHS: Record<IconName, string> = {
   'arrow-up': 'M8 13V3M3.5 7.5 8 3l4.5 4.5',
   trash: 'M2.5 4.5h11M6 4.5V3h4v1.5M4 4.5l.7 9h6.6l.7-9M6.8 7v4.5M9.2 7v4.5',
   branch: 'M5 2.5v11M11 2.5v2.5c0 3-6 2.5-6 6',
+  sun: 'M8 10.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1',
+  moon: 'M13.5 9.5A5.5 5.5 0 0 1 6.5 2.5a5.5 5.5 0 1 0 7 7Z',
+  monitor: 'M2 3h12v8H2zM5.5 14h5M8 11v3',
 };
 
 export function Icon({ name, ...rest }: { name: IconName } & SVGProps<SVGSVGElement>) {

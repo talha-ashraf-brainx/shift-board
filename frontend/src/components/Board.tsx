@@ -170,7 +170,7 @@ export function Board({ tickets, loading, onOpen, onDialog }: BoardProps) {
       onDragEnd={onDragEnd}
       onDragCancel={() => setActive(null)}
     >
-      <div className="flex h-full min-h-0 gap-3 overflow-x-auto px-4 pt-3 pb-4">
+      <div className="flex h-full min-h-0 gap-3 overflow-x-auto px-4 pt-4 pb-4 sm:px-5">
         {COLUMNS.map((column) => (
           <Column
             key={column.key}
@@ -185,7 +185,7 @@ export function Board({ tickets, loading, onOpen, onDialog }: BoardProps) {
           />
         ))}
       </div>
-      <DragOverlay>{active ? <TicketCard ticket={active} overlay className="cursor-grabbing" /> : null}</DragOverlay>
+      <DragOverlay dropAnimation={{ duration: 220, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }}>{active ? <TicketCard ticket={active} overlay className="cursor-grabbing" /> : null}</DragOverlay>
     </DndContext>
   );
 }

@@ -1,4 +1,6 @@
-import '@fontsource-variable/inter';
+import '@fontsource-variable/bricolage-grotesque';
+import '@fontsource-variable/instrument-sans';
+import '@fontsource-variable/jetbrains-mono';
 import './styles/index.css';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StrictMode } from 'react';
@@ -7,6 +9,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { ApiError } from './api/client';
 import { App } from './App';
+import { useTheme } from './hooks/useTheme';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -22,6 +25,11 @@ const queryClient = new QueryClient({
   },
 });
 
+function ThemedToaster() {
+  const { resolved } = useTheme();
+  return <Toaster position="bottom-right" theme={resolved} richColors closeButton toastOptions={{ className: 'font-sans' }} />;
+}
+
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root element');
 
@@ -31,7 +39,7 @@ createRoot(root).render(
       <BrowserRouter>
         <App />
       </BrowserRouter>
-      <Toaster position="bottom-right" theme="light" richColors closeButton toastOptions={{ className: 'font-sans' }} />
+      <ThemedToaster />
     </QueryClientProvider>
   </StrictMode>,
 );

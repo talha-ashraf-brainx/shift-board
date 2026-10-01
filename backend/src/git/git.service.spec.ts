@@ -239,9 +239,9 @@ describe('GitService', () => {
       const { worktreePath } = await svc.createWorktree(t);
       writeFileSync(join(worktreePath, 'a.txt'), 'anon\n');
       await svc.commitAll(worktreePath, 'anon commit');
-      expect(git(worktreePath, 'log', '-1', '--format=%an <%ae>').trim()).toBe('Agent Board <agent-board@localhost>');
+      expect(git(worktreePath, 'log', '-1', '--format=%an <%ae>').trim()).toBe('Shiftboard <agent-board@localhost>');
       await svc.merge(t);
-      expect(git(repo, 'log', '-1', '--format=%an|%s').trim()).toBe('Agent Board|Merge ticket #13: No identity');
+      expect(git(repo, 'log', '-1', '--format=%an|%s').trim()).toBe('Shiftboard|Merge ticket #13: No identity');
     } finally {
       if (saved.g === undefined) delete process.env.GIT_CONFIG_GLOBAL;
       else process.env.GIT_CONFIG_GLOBAL = saved.g;

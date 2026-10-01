@@ -6,8 +6,7 @@ const base: ResumeTicket = {
   priority: 'medium',
   title: 'Fix bug',
   description: 'Broken.',
-  context: null,
-  rules: null,
+  rules: [],
   sessionId: 'sess-1',
   lastError: null,
 };

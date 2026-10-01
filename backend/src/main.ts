@@ -24,7 +24,7 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
   configureApp(app, config);
   await app.listen(config.apiPort);
-  new Logger('Bootstrap').log(`Agent Board API listening on http://localhost:${config.apiPort}/api`);
+  new Logger('Bootstrap').log(`Shiftboard API listening on http://localhost:${config.apiPort}/api`);
 }
 
 bootstrap().catch((e: unknown) => {

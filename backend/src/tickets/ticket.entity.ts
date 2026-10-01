@@ -44,11 +44,8 @@ export class TicketEntity {
   @Column({ type: 'text' })
   description!: string;
 
-  @Column({ type: 'text', nullable: true })
-  context!: string | null;
-
-  @Column({ type: 'text', nullable: true })
-  rules!: string | null;
+  @Column({ type: 'text', array: true, default: () => "'{}'" })
+  rules!: string[];
 
   @Column({ type: 'enum', enum: TicketPriority, enumName: 'ticket_priority', default: TicketPriority.Medium })
   priority!: TicketPriority;

@@ -28,8 +28,7 @@ export interface PromptTicket {
   priority: string;
   title: string;
   description: string;
-  context?: string | null;
-  rules?: string | null;
+  rules?: string[] | null;
   /** Adds a `Project: <name>` line after the header. */
   projectName?: string | null;
 }
@@ -44,9 +43,14 @@ function orNone(text: string | null | undefined): string {
   return trimmed.length > 0 ? trimmed : 'None';
 }
 
+function ruleList(rules: string[] | null | undefined): string {
+  const items = (rules ?? []).map((r) => r.trim()).filter(Boolean);
+  return items.length > 0 ? items.map((r) => `- ${r}`).join('\n') : 'None';
+}
+
 export function buildSystemAppend({ branchName, baseBranch, globalRules, project }: SystemAppendInput): string {
   const lines = [
-    'You are an autonomous engineer working through tickets on the Agent Board.',
+    'You are an autonomous engineer working through tickets on Shiftboard.',
     ...(project ? [`Project: ${project.name} (${project.repoPath})`] : []),
     `You are inside a git worktree on branch ${branchName}, created from ${baseBranch}.`,
     '',
@@ -74,11 +78,8 @@ export function buildFirstRunPrompt(ticket: PromptTicket): string {
     '## Description',
     ticket.description.trim(),
     '',
-    '## Context provided',
-    orNone(ticket.context),
-    '',
     '## Ticket-specific rules (these override global rules if they conflict)',
-    orNone(ticket.rules),
+    ruleList(ticket.rules),
   ].join('\n');
 }
 

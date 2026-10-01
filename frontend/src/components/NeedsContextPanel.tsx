@@ -37,7 +37,7 @@ export function NeedsContextPanel({ ticket }: { ticket: TicketWithEventsDto }) {
   }
 
   return (
-    <section aria-labelledby="needs-context-title" className="rounded-card border border-amber-200 bg-amber-50/60 p-3">
+    <section aria-labelledby="needs-context-title" className="animate-rise-in rounded-card border border-amber-200 bg-amber-50/70 p-4">
       <h3 id="needs-context-title" className="flex items-center gap-1.5 text-meta font-semibold text-amber-900">
         <Icon name="question" width={14} height={14} />
         The agent needs more context

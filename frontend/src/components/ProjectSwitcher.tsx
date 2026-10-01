@@ -85,7 +85,7 @@ export function ProjectSwitcher({ selectedId, onSelect, onManage }: ProjectSwitc
   }
 
   const itemClass =
-    'flex w-full items-center gap-2 rounded-[4px] px-2 py-1.5 text-left text-meta text-ink outline-none hover:bg-stone-100 focus-visible:bg-stone-100 focus-visible:outline-none';
+    'flex w-full items-center gap-2 rounded-[6px] px-2 py-1.5 text-left text-meta text-ink outline-none transition-colors duration-100 hover:bg-stone-100 focus-visible:bg-stone-100 focus-visible:outline-none';
 
   return (
     <div ref={rootRef} className="relative">
@@ -105,13 +105,18 @@ export function ProjectSwitcher({ selectedId, onSelect, onManage }: ProjectSwitc
         }}
         className={clsx(
           'inline-flex h-8 max-w-[14rem] items-center gap-2 rounded-control border px-2.5 text-meta font-medium transition-colors',
-          open ? 'border-stone-300 bg-stone-50' : 'border-line bg-surface hover:bg-stone-50',
+          open ? 'border-line-strong bg-stone-50' : 'border-line bg-surface hover:border-line-strong hover:bg-stone-50',
         )}
       >
         <Icon name="folder" width={14} height={14} className="shrink-0 text-muted" />
         <span className="truncate">{label}</span>
         {anyBlocked && selected ? <RepoNotReadyDot reason={selected.repoStatus.reason} /> : null}
-        <Icon name="chevron-down" width={14} height={14} className="shrink-0 text-muted" />
+        <Icon
+          name="chevron-down"
+          width={14}
+          height={14}
+          className={clsx('shrink-0 text-muted transition-transform duration-200 ease-out-soft', open && 'rotate-180')}
+        />
       </button>
 
       {open ? (
@@ -122,7 +127,7 @@ export function ProjectSwitcher({ selectedId, onSelect, onManage }: ProjectSwitc
           aria-label="Projects"
           tabIndex={-1}
           onKeyDown={onMenuKeyDown}
-          className="absolute top-full left-0 z-30 mt-1 w-64 rounded-card border border-line bg-surface p-1 shadow-sm"
+          className="absolute top-full left-0 z-30 mt-1.5 w-64 origin-top-left animate-pop-in rounded-card border border-line bg-surface p-1 shadow-pop"
         >
           <button
             type="button"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Creates a tiny plain-Node sample repo with a few obvious bugs for Agent Board demos.
+# Creates a tiny plain-Node sample repo with a few obvious bugs for Shiftboard demos.
 #
 # Usage: scripts/seed-sample-repo.sh [--force] [path]
 #   path     target directory (default: $HOME/agent-board-sample)
@@ -47,7 +47,7 @@ cat > package.json <<'EOF'
   "name": "agent-board-sample",
   "version": "1.0.0",
   "private": true,
-  "description": "Tiny checkout library with a few deliberate bugs, used to demo Agent Board.",
+  "description": "Tiny checkout library with a few deliberate bugs, used to demo Shiftboard.",
   "main": "src/index.js",
   "scripts": {
     "test": "node --test"
@@ -245,7 +245,7 @@ EOF
 cat > README.md <<'EOF'
 # agent-board-sample
 
-A tiny checkout library used to demo Agent Board. It has a few deliberate bugs, and the test
+A tiny checkout library used to demo Shiftboard. It has a few deliberate bugs, and the test
 suite fails until they are fixed.
 
 ```sh
@@ -265,7 +265,7 @@ EOF
 git init -q -b main
 git add -A
 IDENTITY=()
-git config --get user.name >/dev/null 2>&1 || IDENTITY+=(-c "user.name=Agent Board")
+git config --get user.name >/dev/null 2>&1 || IDENTITY+=(-c "user.name=Shiftboard")
 git config --get user.email >/dev/null 2>&1 || IDENTITY+=(-c "user.email=agent-board@localhost")
 git ${IDENTITY[@]+"${IDENTITY[@]}"} commit -q -m "Initial commit: sample checkout library"
 
@@ -282,7 +282,7 @@ Created sample repo at: $TARGET  (branch main, 1 commit)
   test/*.test.js      node:test tests that currently FAIL
   CLAUDE.md, README.md
 
-Point Agent Board at it:
+Point Shiftboard at it:
   TARGET_REPO_PATH=$TARGET
   BASE_BRANCH=main
 

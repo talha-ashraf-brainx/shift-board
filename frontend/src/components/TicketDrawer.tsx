@@ -48,26 +48,34 @@ function MetaItem({ label, children, title }: { label: string; children: ReactNo
 }
 
 function DetailsTab({ ticket }: { ticket: TicketWithEventsDto }) {
-  const sections: { label: string; body: string | null; empty: string }[] = [
-    { label: 'Description', body: ticket.description, empty: 'No description.' },
-    { label: 'Context', body: ticket.context, empty: 'No extra context provided.' },
-    { label: 'Rules for this ticket', body: ticket.rules, empty: 'No ticket-specific rules; only the global rules apply.' },
-  ];
   return (
     <div className="flex flex-col gap-5">
-      {sections.map((s) => (
-        <section key={s.label} aria-label={s.label}>
-          <h3 className="mb-1 text-[12px] font-medium text-muted">{s.label}</h3>
-          {s.body?.trim() ? <Markdown>{s.body}</Markdown> : <p className="text-meta text-muted">{s.empty}</p>}
-        </section>
-      ))}
+      <section aria-label="Description">
+        <h3 className="mb-1.5 text-[12px] font-medium text-muted">Description</h3>
+        {ticket.description.trim() ? <Markdown>{ticket.description}</Markdown> : <p className="text-meta text-muted">No description.</p>}
+      </section>
+      <section aria-label="Rules for this ticket">
+        <h3 className="mb-1.5 text-[12px] font-medium text-muted">Rules for this ticket</h3>
+        {ticket.rules.length > 0 ? (
+          <ul className="flex flex-col gap-1.5">
+            {ticket.rules.map((rule, i) => (
+              <li key={i} className="flex gap-2 rounded-control border border-line bg-page px-2.5 py-1.5 text-meta">
+                <span className="shrink-0 text-muted tabular-nums">{i + 1}.</span>
+                <span className="min-w-0 break-words">{rule}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-meta text-muted">No ticket-specific rules; only the global rules apply.</p>
+        )}
+      </section>
     </div>
   );
 }
 
 function DrawerSkeleton() {
   return (
-    <div className="space-y-4 p-5" aria-busy="true" aria-label="Loading ticket">
+    <div className="space-y-4 p-6" aria-busy="true" aria-label="Loading ticket">
       <Skeleton className="h-4 w-24" />
       <Skeleton className="h-6 w-3/4" />
       <div className="grid grid-cols-4 gap-3">
@@ -120,9 +128,9 @@ function DrawerContent({ ticket, onClose }: { ticket: TicketWithEventsDto; onClo
 
   return (
     <>
-      <div className="sticky top-0 z-10 border-b border-line bg-surface px-5 pt-4 pb-3">
+      <div className="sticky top-0 z-10 border-b border-line bg-surface/90 px-6 pt-5 pb-4 backdrop-blur-md">
         <div className="flex items-center gap-2">
-          <span className="font-mono text-meta text-muted">#{ticket.number}</span>
+          <span className="text-meta font-medium text-muted tabular-nums">#{ticket.number}</span>
           <StatusBadge status={status} />
           <span
             className="inline-flex min-w-0 items-center gap-1 text-meta text-muted"
@@ -135,15 +143,15 @@ function DrawerContent({ ticket, onClose }: { ticket: TicketWithEventsDto; onClo
             type="button"
             onClick={onClose}
             aria-label="Close ticket"
-            className="ml-auto rounded-control p-1 text-muted hover:bg-stone-100 hover:text-ink"
+            className="-mr-1.5 ml-auto rounded-control p-1.5 text-muted transition-colors hover:bg-stone-100 hover:text-ink"
           >
             <Icon name="close" />
           </button>
         </div>
-        <h2 id="drawer-title" className="mt-1.5 text-[17px] leading-snug font-semibold break-words">
+        <h2 id="drawer-title" className="mt-2.5 font-display text-[22px] leading-[1.2] font-semibold break-words">
           {ticket.title}
         </h2>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className="mt-4 flex flex-wrap items-center gap-2">
           <label htmlFor="drawer-priority" className="sr-only">
             Priority
           </label>
@@ -155,7 +163,7 @@ function DrawerContent({ ticket, onClose }: { ticket: TicketWithEventsDto; onClo
             onChange={(e) =>
               updatePriority.mutate({ id: ticket.id, input: { priority: e.target.value as TicketPriority } })
             }
-            className="field h-8 w-auto py-0 pr-7 text-meta"
+            className="field h-8 w-auto py-0 text-meta"
           >
             {ALL_PRIORITIES.map((p) => (
               <option key={p} value={p}>
@@ -200,8 +208,8 @@ function DrawerContent({ ticket, onClose }: { ticket: TicketWithEventsDto; onClo
         </div>
       </div>
 
-      <div className="flex flex-col gap-4 px-5 py-4">
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-card border border-line bg-page/50 px-3 py-2.5 sm:grid-cols-4">
+      <div className="flex flex-col gap-5 px-6 py-5">
+        <dl className="grid grid-cols-2 gap-x-5 gap-y-3 rounded-card border border-line bg-page/60 px-4 py-3.5 sm:grid-cols-4">
           <MetaItem label="Project" title={project?.repoPath}>
             {projectName}
           </MetaItem>
@@ -225,7 +233,7 @@ function DrawerContent({ ticket, onClose }: { ticket: TicketWithEventsDto; onClo
         </dl>
 
         {status === TicketStatus.Failed && ticket.lastError ? (
-          <div role="alert" className="rounded-card border border-red-200 bg-red-50 px-3 py-2.5">
+          <div role="alert" className="animate-rise-in rounded-card border border-red-200 bg-red-50 px-4 py-3">
             <p className="flex items-center gap-1.5 text-meta font-semibold text-red-800">
               <Icon name="alert" width={14} height={14} />
               The last run failed
@@ -255,8 +263,8 @@ function DrawerContent({ ticket, onClose }: { ticket: TicketWithEventsDto; onClo
                 onClick={() => setTab(t.key)}
                 onKeyDown={onTabKeyDown}
                 className={clsx(
-                  '-mb-px border-b-2 px-2.5 py-1.5 text-meta font-medium',
-                  activeTab === t.key ? 'border-accent text-ink' : 'border-transparent text-muted hover:text-ink',
+                  '-mb-px border-b-2 px-3 py-2 text-meta font-medium transition-[color,border-color] duration-200 ease-out-soft',
+                  activeTab === t.key ? 'border-accent text-ink' : 'border-transparent text-muted hover:border-line-strong hover:text-ink',
                   'disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-muted',
                 )}
               >
@@ -267,7 +275,7 @@ function DrawerContent({ ticket, onClose }: { ticket: TicketWithEventsDto; onClo
               </button>
             ))}
           </div>
-          <div id={`tabpanel-${activeTab}`} role="tabpanel" aria-labelledby={`tab-${activeTab}`} className="pt-4">
+          <div id={`tabpanel-${activeTab}`} role="tabpanel" aria-labelledby={`tab-${activeTab}`} key={activeTab} className="animate-rise-in pt-5">
             {activeTab === 'details' ? <DetailsTab ticket={ticket} /> : null}
             {activeTab === 'activity' ? <ActivityTimeline events={ticket.events} /> : null}
             {activeTab === 'diff' && diffEnabled ? <TicketDiff ticketId={ticket.id} /> : null}
@@ -313,7 +321,7 @@ function DrawerPanel({ id }: { id: string }) {
       aria-labelledby={data ? 'drawer-title' : undefined}
       aria-label={data ? undefined : 'Ticket'}
       tabIndex={-1}
-      className="fixed inset-y-0 right-0 left-auto z-40 m-0 flex h-full max-h-none w-full max-w-[46rem] flex-col border-l border-line bg-surface text-ink shadow-sm outline-none"
+      className="fixed inset-y-0 right-0 left-auto z-40 m-0 flex h-full max-h-none w-full max-w-[46rem] animate-drawer-in flex-col border-l border-line bg-surface text-ink shadow-pop outline-none"
     >
       <div className="min-h-0 flex-1 overflow-y-auto">
         {data ? (

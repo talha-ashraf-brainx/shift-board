@@ -1,4 +1,4 @@
-# Agent Board — Implementation Plan
+# Shiftboard — Implementation Plan
 
 Source spec: [poc.md](poc.md). This plan follows that spec, with one change to the repo layout: a pnpm-workspace monorepo whose apps are at the root, in `frontend/` and `backend/`, plus a `shared/` package for types used by both.
 
