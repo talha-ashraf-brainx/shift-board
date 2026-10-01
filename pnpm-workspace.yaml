@@ -1,0 +1,38 @@
+packages:
+  - shared
+  - backend
+  - frontend
+allowBuilds:
+  '@parcel/watcher': true
+  unrs-resolver: true
+minimumReleaseAgeExclude:
+  - '@anthropic-ai/claude-agent-sdk-darwin-arm64@0.3.286'
+  - '@anthropic-ai/claude-agent-sdk-darwin-x64@0.3.286'
+  - '@anthropic-ai/claude-agent-sdk-linux-arm64-musl@0.3.286'
+  - '@anthropic-ai/claude-agent-sdk-linux-arm64@0.3.286'
+  - '@anthropic-ai/claude-agent-sdk-linux-x64-musl@0.3.286'
+  - '@anthropic-ai/claude-agent-sdk-linux-x64@0.3.286'
+  - '@anthropic-ai/claude-agent-sdk-win32-arm64@0.3.286'
+  - '@anthropic-ai/claude-agent-sdk-win32-x64@0.3.286'
+  - '@anthropic-ai/claude-agent-sdk@0.3.286'
+  - '@anthropic-ai/sdk@0.131.0'
+  - '@nestjs/common@12.1.2'
+  - '@nestjs/core@12.1.2'
+  - '@nestjs/platform-express@12.1.2'
+  - '@nestjs/platform-socket.io@12.1.2'
+  - '@nestjs/testing@12.1.2'
+  - '@nestjs/websockets@12.1.2'
+  - dotenv@18.0.5
+  - pg-cloudflare@1.4.1
+  - pg-connection-string@2.14.1
+  - pg-protocol@1.16.1
+  - pg@8.23.1
+  - '@nestjs/common@11.2.7'
+  - '@nestjs/core@11.2.7'
+  - '@nestjs/platform-express@11.2.7'
+  - '@nestjs/platform-socket.io@11.2.7'
+  - '@nestjs/testing@11.2.7'
+  - '@nestjs/websockets@11.2.7'
+onlyBuiltDependencies:
+  - '@nestjs/core'
+  - esbuild

@@ -1,0 +1,26 @@
+{
+  "name": "@agent-board/shared",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/cjs/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/cjs/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.cjs.json && tsc -p tsconfig.esm.json",
+    "watch": "concurrently -k -r \"tsc -p tsconfig.cjs.json --watch --preserveWatchOutput\" \"tsc -p tsconfig.esm.json --watch --preserveWatchOutput\"",
+    "typecheck": "tsc -p tsconfig.cjs.json --noEmit",
+    "test": "node --test \"dist/cjs/__tests__/*.test.js\""
+  },
+  "devDependencies": {
+    "@types/node": "26.6.3",
+    "concurrently": "10.0.5",
+    "typescript": "5.9.3"
+  }
+}

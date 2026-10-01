@@ -1,0 +1,20 @@
+{
+  "name": "agent-board",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@11.8.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @agent-board/shared build && concurrently -k -n shared,api,web -c gray,blue,magenta \"pnpm --filter @agent-board/shared watch\" \"pnpm --filter @agent-board/backend dev\" \"pnpm --filter @agent-board/frontend dev\"",
+    "build": "pnpm --filter @agent-board/shared build && pnpm --filter @agent-board/backend build && pnpm --filter @agent-board/frontend build",
+    "db:migrate": "pnpm --filter @agent-board/shared build && pnpm --filter @agent-board/backend migration:run",
+    "lint": "pnpm --filter @agent-board/shared build && pnpm --filter @agent-board/shared typecheck && pnpm --filter @agent-board/backend typecheck && pnpm --filter @agent-board/frontend lint && pnpm --filter @agent-board/frontend typecheck",
+    "test": "pnpm --filter @agent-board/shared build && pnpm --filter @agent-board/shared test && pnpm --filter @agent-board/backend test"
+  },
+  "devDependencies": {
+    "concurrently": "10.0.5",
+    "typescript": "5.9.3"
+  }
+}
